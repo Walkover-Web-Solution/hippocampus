@@ -1,0 +1,161 @@
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { OpenAIEmbeddings } from "@langchain/openai";
+import env from "../config/env";
+import { Chunk } from "../type/chunk";
+import ChunkService from "../service/chunk";
+import mongoose from "mongoose";
+import { IEncoder } from "./utility";
+import { Encoder } from "./encoder";
+import { deletePoints, insert } from "./qdrant";
+import { v4 as uuidv4 } from 'uuid';
+import producer from "../config/producer";
+
+type Metadata = {
+    public: boolean;
+    collectionId: string;
+    [key: string]: any;
+}
+
+export class Doc {
+    private content?: string;
+    private resourceId: string;
+    private chunks: Array<Chunk>;
+    private metadata?: Metadata;
+    constructor(resourceId: string, content?: string, metadata?: Metadata) {
+        this.content = content;
+        this.resourceId = resourceId;
+        this.metadata = metadata;
+        this.chunks = [];
+    }
+
+    async chunk(chunkSize: number, overlap: number = 0) {
+        if (!this.content) throw new Error("Content is required for chunking");
+        if (!this?.metadata?.collectionId) throw new Error("CollectionId is required for chunking");
+        this.chunks = []
+
+        const textSplitter = new RecursiveCharacterTextSplitter({
+            chunkSize: chunkSize,
+            chunkOverlap: overlap,
+        });
+        const splits = await textSplitter.splitDocuments([{ pageContent: this.content, metadata: {} }]);
+        for (const split of splits) {
+            this.chunks.push({
+                _id: uuidv4(),
+                data: split.pageContent,
+                resourceId: this.resourceId,
+                public: this.metadata?.public,
+                collectionId: this.metadata.collectionId,
+            });
+        }
+        return this;
+    }
+
+    async encode(model: string): Promise<this> {
+        const chunkTexts = this.chunks.map((chunk) => chunk.data);
+        const encoder = new Encoder();
+        const embeddings = await encoder.encode(chunkTexts, model);
+        this.chunks = this.chunks.map((chunk, index) => {
+            chunk.vector = embeddings[index];
+            return chunk;
+        });
+        return this;
+    }
+
+    // async save(storage: Storage): Promise<this> {
+    //     await storage.save(this.chunks);
+    //     return this;
+    // }
+    async store(): Promise<this> {
+        await producer.publish("chunk_exchange", {
+            action: "save",
+            collectionId: this.metadata?.collectionId,
+            resourceId: this.resourceId,
+            chunks: this.chunks
+        });
+        return this;
+    }
+
+    // async delete(storage: Storage) {
+    //     if (!this.metadata?.collectionId) throw new Error("CollectionId is required for deleting chunks");
+    //     await storage.delete(this.metadata?.collectionId, this.resourceId);
+    //     return this;
+    // }
+    async delete() {
+        if (!this.metadata?.collectionId) throw new Error("CollectionId is required for deleting chunks");
+        await producer.publish("chunk_exchange", {
+            action: "delete",
+            collectionId: this.metadata?.collectionId,
+            resourceId: this.resourceId
+        });
+        return this;
+    }
+}
+
+
+export interface Storage {
+    save(chunks: Chunk[]): Promise<any>;
+    delete(collectionId: string, resourceId: string): Promise<any>;
+}
+
+
+
+
+
+
+export class MongoStorage implements Storage {
+    async save(chunks: Chunk[]) {
+        return Promise.all(chunks.map(async (chunk) => await ChunkService.createChunk(chunk)));
+    }
+
+    async delete(collectionId: string, resourceId: string) {
+        return ChunkService.deleteChunksByResource(resourceId);
+    }
+}
+
+export class QdrantStorage implements Storage {
+    async save(chunks: Chunk[]) {
+        const points = chunks.map((chunk) => {
+            return {
+                id: chunk._id!,
+                vector: chunk.vector,
+                payload: {
+                    resourceId: chunk.resourceId,
+                    collectionId: chunk.collectionId,
+                    content: chunk.data,
+                    public: chunk.public
+                }
+            }
+        });
+        // Map chunks based on their collectionId
+        const collectionMap: Record<string, Array<typeof points[0]>> = {};
+        for (const point of points) {
+            if (!point.vector) continue;
+            const collectionId = point.payload.collectionId;
+            if (!collectionMap[collectionId]) {
+                collectionMap[collectionId] = [];
+            }
+            collectionMap[collectionId].push(point);
+        }
+        // Insert points into Qdrant based on their collectionId
+        for (const collectionId in collectionMap) {
+            const collectionName = `${collectionId}`;
+            await insert(collectionName, collectionMap[collectionId] as any);
+        }
+    }
+
+    async delete(collectionId: string, resourceId: string) {
+
+        const collectionName = `${collectionId}`;
+        const filter = {
+            must: [
+                {
+                    key: "resourceId",
+                    match: {
+                        value: resourceId
+                    }
+                }
+            ]
+        };
+        return deletePoints(collectionName, filter);
+    }
+}
