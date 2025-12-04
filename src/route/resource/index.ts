@@ -1,7 +1,9 @@
 import express from 'express';
 import ResourceService from '../../service/resource';
 import { CreateResourceSchema, UpdateResourceSchema, Resource } from '../../type/resource';
+import ChunkService from '../../service/chunk';
 import { ApiError } from '../../error/api-error';
+import { Chunk } from '../../type/chunk';
 
 const router = express.Router();
 
@@ -22,6 +24,19 @@ router.get('/:id', async (req, res, next) => {
             throw new ApiError('Resource not found', 404);
         }
         res.json(resource);
+    } catch (error) {
+        next(error);
+    }
+});
+router.get('/:id/chunks', async (req, res, next) => {
+    try {
+        const chunks = await ChunkService.getChunkByResourceId(req.params.id);
+        if (!chunks) {
+            throw new ApiError('Chunks not found', 404);
+        }
+        res.json({
+            chunks: chunks as Chunk[]
+        });
     } catch (error) {
         next(error);
     }

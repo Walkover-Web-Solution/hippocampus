@@ -11,6 +11,10 @@ const getChunkById = async (id: string): Promise<ChunkType | null> => {
     return await Chunk.findById(id);
 };
 
+const getChunkByResourceId = async (resourceId: string): Promise<ChunkType[] | null> => {
+    return await Chunk.find({ resourceId });
+}
+
 const updateChunk = async (id: string, data: UpdateChunk): Promise<ChunkType | null> => {
     return await Chunk.findByIdAndUpdate(id, data, { new: true });
 };
@@ -35,5 +39,6 @@ export default {
     getChunkById,
     updateChunk,
     deleteChunk,
-    deleteChunksByResource
+    deleteChunksByResource,
+    getChunkByResourceId
 };
