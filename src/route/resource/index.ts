@@ -1,6 +1,6 @@
 import express from 'express';
 import ResourceService from '../../service/resource';
-import { CreateResourceSchema, UpdateResourceSchema, Resource } from '../../type/resource';
+import { CreateResourceSchema, UpdateResourceSchema, Resource, ResourceSchema } from '../../type/resource';
 import ChunkService from '../../service/chunk';
 import { ApiError } from '../../error/api-error';
 import { Chunk } from '../../type/chunk';
@@ -44,7 +44,7 @@ router.get('/:id/chunks', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
     try {
-        const validatedData = UpdateResourceSchema.parse(req.body);
+        const validatedData = ResourceSchema.pick({ "content": true, "title": true, "description": true }).parse(req.body);
         const resource: Resource | null = await ResourceService.updateResource(req.params.id, validatedData);
         if (!resource) {
             throw new ApiError('Resource not found', 404);
