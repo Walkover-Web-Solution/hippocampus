@@ -53,7 +53,10 @@ export class Doc {
     async encode(model: string): Promise<this> {
         const chunkTexts = this.chunks.map((chunk) => chunk.data);
         const encoder = new Encoder();
+        const startTime = performance.now();
         const embeddings = await encoder.encode(chunkTexts, model);
+        const duration = Math.round(performance.now() - startTime);
+        console.log(`Encoding ${this.chunks.length} chunks with ${model} took ${duration}ms`);
         this.chunks = this.chunks.map((chunk, index) => {
             chunk.vector = embeddings[index];
             return chunk;
