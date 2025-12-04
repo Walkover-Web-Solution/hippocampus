@@ -51,16 +51,4 @@ router.put('/:id', async (req, res, next) => {
     }
 });
 
-router.delete('/:id', async (req, res, next) => {
-    try {
-        const collection: Collection | null = await CollectionService.deleteCollection(req.params.id);
-        if (!collection) {
-            throw new ApiError('Collection not found', 404);
-        }
-        res.status(204).send();
-    } catch (error) {
-        next(error);
-    }
-});
-
 export default router;
