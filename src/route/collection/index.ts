@@ -20,7 +20,9 @@ router.post('/', async (req, res, next) => {
 router.get('/:id/resources', async (req, res, next) => {
     try {
         const resources: Resource[] = await ResourceService.getResourcesByCollectionId(req.params.id);
-        res.json(resources);
+        res.json({
+            resources: resources
+        });
     } catch (error) {
         next(error);
     }
