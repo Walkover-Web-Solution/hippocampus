@@ -74,6 +74,34 @@ async function qdrantUSAStore(message: any, channel: Channel) {
         channel.ack(message);
     }
 }
+const QDRANT_INDIA_QUEUE = "qdrant-india-sync";
+async function qdrantIndiaStore(message: any, channel: Channel) {
+    try {
+        const msg = JSON.parse(message.content.toString());
+        const action = msg.action;
+        const collectionId = msg.collectionId;
+        const resourceId = msg.resourceId;
+        switch (action) {
+            case "save": {
+                const chunks: Chunk[] = msg.chunks;
+                const storage = new QdrantStorage();
+                await storage.save(chunks);
+                break;
+            }
+            case "delete": {
+                const storage = new QdrantStorage();
+                await storage.delete(collectionId, resourceId);
+                break;
+            }
+        }
+        channel.ack(message);
+    } catch (error) {
+        console.error("Error processing mongoStore message:", error);
+        const failedQueue = `${QDRANT_INDIA_QUEUE}-failed`;
+        await producer.publishToQueue(failedQueue, message.content.toString());
+        channel.ack(message);
+    }
+}
 
 export const mongoStoreConsumer = {
     queue: MONGO_QUEUE,
@@ -84,5 +112,10 @@ export const mongoStoreConsumer = {
 export const qdrantUSAStoreConsumer = {
     queue: QDRANT_USA_QUEUE,
     processor: qdrantUSAStore,
+    batch: 1
+}
+export const qdrantIndiaStoreConsumer = {
+    queue: QDRANT_INDIA_QUEUE,
+    processor: qdrantIndiaStore,
     batch: 1
 }

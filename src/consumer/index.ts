@@ -5,7 +5,7 @@ import { Connection, Channel } from "amqplib";
 import logger from "../service/logger";
 import rabbitmq from "../config/rabbitmq";
 import rag from './rag';
-import { mongoStoreConsumer, qdrantUSAStoreConsumer } from "./storage";
+import { mongoStoreConsumer, qdrantIndiaStoreConsumer } from "./storage";
 import { connectDB } from "../models";
 import { delay } from "../utility";
 connectDB();
@@ -17,7 +17,7 @@ switch (args?.consumer) {
     break;
   case "storage":
     CONSUMERS.push(mongoStoreConsumer);
-    CONSUMERS.push(qdrantUSAStoreConsumer);
+    CONSUMERS.push(qdrantIndiaStoreConsumer);
     break;
   default:
     break;

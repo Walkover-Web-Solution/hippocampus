@@ -6,3 +6,4 @@ logs
 coverage
 newrelic*
 GEMINI.md
+venv

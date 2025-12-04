@@ -10,7 +10,7 @@ import producer from '../config/producer';
 import { JobPointer } from '../service/utility';
 import env from '../config/env';
 
-const dbName = env.MONGO_DB_NAME || 'helloworld';
+const dbName = env.MONGO_DB_NAME || 'hippocampus';
 export const ragSyncJob = async (jobName: string = "rag-sync") => {
     const pointer = await JobPointer.getPointer(jobName);
     mongoService().on("connect", async (connection: MongoClient) => {
