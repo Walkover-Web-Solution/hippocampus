@@ -14,6 +14,58 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
     }
 }
 
+export async function generateSparseEmbedding(texts: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<{ indices: number[], values: number[] }[]> {
+    // Dummy implementation. 
+    // In a real scenario, this would call an external service (e.g., Python) or use a JS-compatible library.
+    return texts.map(() => ({
+        indices: [1, 2, 3], // Dummy indices
+        values: [0.1, 0.2, 0.3] // Dummy values
+    }));
+}
+
+export async function generateRerank(query: string, documents: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[]> {
+    // Dummy implementation.
+    // Returns scores for each document.
+    return documents.map(() => Math.random());
+}
+
+export class SparseEncoder implements IEncoder {
+    async encode(chunks: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<any> {
+        return generateSparseEmbedding(chunks, model);
+    }
+    getModelDetail(model: string) {
+        return {
+             name: "SPLADE",
+             provider: "Hosted",
+             description: "Sparse Lexical and Expansion Model",
+             latency: "Medium"
+        };
+    }
+}
+
+export class Reranker implements IEncoder {
+    async encode(chunks: string[], model: string = "colbert-ir/colbertv2.0"): Promise<any> {
+        // This signature doesn't quite match 'rerank' which needs query + docs, 
+        // but for now we follow the pattern. 
+        // We might need to adjust IEncoder or just use the function directly.
+        throw new Error("Reranker requires query and documents");
+    }
+    
+    // Custom method for reranking
+    async rerank(query: string, documents: string[], model: string): Promise<number[]> {
+        return generateRerank(query, documents, model);
+    }
+
+    getModelDetail(model: string) {
+        return {
+             name: "ColBERT",
+             provider: "Hosted",
+             description: "Late Interaction Reranker",
+             latency: "High"
+        };
+    }
+}
+
 export class FastEmbedEncoder implements IEncoder {
     async encode(chunks: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
         return generateEmbedding(chunks, model);

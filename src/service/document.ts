@@ -6,6 +6,7 @@ import ChunkService from "../service/chunk";
 import mongoose from "mongoose";
 import { IEncoder } from "./utility";
 import { Encoder } from "./encoder";
+import { generateSparseEmbedding } from "./encoder/fast-embed";
 import { deletePoints, insert } from "./qdrant";
 import { v4 as uuidv4 } from 'uuid';
 import producer from "../config/producer";
@@ -50,15 +51,24 @@ export class Doc {
         return this;
     }
 
-    async encode(model: string): Promise<this> {
+    async encode(model: string, hybridModel?: string): Promise<this> {
         const chunkTexts = this.chunks.map((chunk) => chunk.data);
         const encoder = new Encoder();
         const startTime = performance.now();
         const embeddings = await encoder.encode(chunkTexts, model);
+        
+        let sparseEmbeddings: any[] = [];
+        if (hybridModel) {
+            sparseEmbeddings = await encoder.encodeSparse(chunkTexts, hybridModel);
+        }
+
         const duration = Math.round(performance.now() - startTime);
         console.log(`Encoding ${this.chunks.length} chunks with ${model} took ${duration}ms`);
         this.chunks = this.chunks.map((chunk, index) => {
             chunk.vector = embeddings[index];
+            if (hybridModel) {
+                chunk.sparseVector = sparseEmbeddings[index];
+            }
             return chunk;
         });
         return this;
@@ -118,9 +128,16 @@ export class MongoStorage implements Storage {
 export class QdrantStorage implements Storage {
     async save(chunks: Chunk[]) {
         const points = chunks.map((chunk) => {
+            let vector: any = chunk.vector;
+            if (chunk.sparseVector) {
+                vector = {
+                    dense: chunk.vector,
+                    sparse: chunk.sparseVector
+                };
+            }
             return {
                 id: chunk._id!,
-                vector: chunk.vector,
+                vector: vector,
                 payload: {
                     resourceId: chunk.resourceId,
                     collectionId: chunk.collectionId,

@@ -39,9 +39,9 @@ async function processMsg(message: any, channel: Channel) {
                 // TODO: Choose encoder and chunking strategy based on collection settings
                 const collection = await CollectionService.getCollectionById(data.collectionId);
                 if (!collection) throw new Error("Collection not found");
-                const { encoder, chunkOverlap, chunkSize } = collection.settings;
+                const { denseModel, chunkOverlap, chunkSize, sparseModel } = collection.settings;
                 const chunkedDocument = await doc.chunk(chunkSize || 512, chunkOverlap || 50);
-                await chunkedDocument.encode(encoder);
+                await chunkedDocument.encode(denseModel, sparseModel);
                 await chunkedDocument.store();
                 // await updateDescription(data?.resourceId, data?.content).catch(error => logger.error(error));
                 pipelineStatus = "chunked";
