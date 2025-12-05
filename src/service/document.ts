@@ -51,24 +51,22 @@ export class Doc {
         return this;
     }
 
-    async encode(model: string, hybridModel?: string): Promise<this> {
+    async encode({ denseModel, sparseModel, rerankerModel }: any): Promise<this> {
         const chunkTexts = this.chunks.map((chunk) => chunk.data);
         const encoder = new Encoder();
         const startTime = performance.now();
-        const embeddings = await encoder.encode(chunkTexts, model);
-        
-        let sparseEmbeddings: any[] = [];
-        if (hybridModel) {
-            sparseEmbeddings = await encoder.encodeSparse(chunkTexts, hybridModel);
+        const embeddings = {
+            denseVectors: await encoder.encode(chunkTexts, denseModel),
+            sparseVectors: sparseModel ? await encoder.encodeSparse(chunkTexts, sparseModel) : undefined,
+            rerankVectors: rerankerModel ? await encoder.encodeReranker(chunkTexts, rerankerModel) : undefined,
         }
 
         const duration = Math.round(performance.now() - startTime);
-        console.log(`Encoding ${this.chunks.length} chunks with ${model} took ${duration}ms`);
+        console.log(`Encoding ${this.chunks.length} chunks with (${denseModel} | ${sparseModel} | ${rerankerModel}) took ${duration}ms`);
         this.chunks = this.chunks.map((chunk, index) => {
-            chunk.vector = embeddings[index];
-            if (hybridModel) {
-                chunk.sparseVector = sparseEmbeddings[index];
-            }
+            chunk.vector = embeddings.denseVectors[index];
+            chunk.sparseVector = embeddings.sparseVectors ? embeddings.sparseVectors[index] : undefined;
+            chunk.rerankVector = embeddings.rerankVectors ? embeddings.rerankVectors[index] : undefined;
             return chunk;
         });
         return this;
@@ -128,13 +126,12 @@ export class MongoStorage implements Storage {
 export class QdrantStorage implements Storage {
     async save(chunks: Chunk[]) {
         const points = chunks.map((chunk) => {
-            let vector: any = chunk.vector;
-            if (chunk.sparseVector) {
-                vector = {
-                    dense: chunk.vector,
-                    sparse: chunk.sparseVector
-                };
-            }
+            let vector: any = {
+                dense: chunk.vector,
+                sparse: chunk.sparseVector ? chunk.sparseVector : undefined,
+                rerank: chunk.rerankVector ? chunk.rerankVector : undefined,
+            };
+
             return {
                 id: chunk._id!,
                 vector: vector,

@@ -18,7 +18,7 @@ export class Encoder {
         };
         this.sparseStates = {
             'prithivida/splade-pp-en-v1': new SparseEncoder(),
-            'bm25': new SparseEncoder(), // Treating bm25 as a "model" that generates sparse vectors
+            'bm25': new SparseEncoder(),
         };
         this.rerankerStates = {
             'colbert-ir/colbertv2.0': new Reranker(),
@@ -80,6 +80,12 @@ export class Encoder {
     async encodeSparse(chunks: string[], model: string) {
         const encoder = this.sparseStates[model];
         if (!encoder) throw new Error(`Sparse encoder model ${model} not supported`);
+        return encoder.encode(chunks, model);
+    }
+
+    async encodeReranker(chunks: string[], model: string) {
+        const encoder = this.rerankerStates[model];
+        if (!encoder) throw new Error(`Reranker model ${model} not supported`);
         return encoder.encode(chunks, model);
     }
 

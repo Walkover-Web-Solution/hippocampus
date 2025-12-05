@@ -12,6 +12,7 @@ export const ChunkSchema = z.object({
     indices: z.array(z.number()),
     values: z.array(z.number())
   }).optional(),
+  rerankVector: z.array(z.array(z.number())).optional(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),
 });

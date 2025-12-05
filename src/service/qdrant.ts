@@ -89,8 +89,18 @@ export async function insert(collectionName: string, points: Array<QdrantPoint>)
             if (firstVector.sparse) {
                 sparseVectorsConfig = { sparse: {} };
             }
+            if (firstVector.rerank) {
+                const colbertSize = firstVector.rerank[0]?.length || 128;
+                vectorsConfig.colbert = {
+                    size: colbertSize,
+                    distance: 'Cosine',
+                    multivector_config: {
+                        comparator: 'max_sim'
+                    }
+                };
+            }
         }
-        
+
         const createConfig: any = { vectors: vectorsConfig };
         if (sparseVectorsConfig) {
             createConfig.sparse_vectors = sparseVectorsConfig;

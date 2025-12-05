@@ -15,12 +15,16 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
 }
 
 export async function generateSparseEmbedding(texts: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<{ indices: number[], values: number[] }[]> {
-    // Dummy implementation. 
-    // In a real scenario, this would call an external service (e.g., Python) or use a JS-compatible library.
-    return texts.map(() => ({
-        indices: [1, 2, 3], // Dummy indices
-        values: [0.1, 0.2, 0.3] // Dummy values
-    }));
+    try {
+        const response = await axios.post('http://127.0.0.1:8000/sparse-embed', {
+            model: model,
+            texts: texts
+        });
+        return response.data.embeddings;
+    } catch (error) {
+        console.error('Error fetching embeddings:', error);
+        throw error;
+    }
 }
 
 export async function generateRerank(query: string, documents: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[]> {
@@ -29,28 +33,38 @@ export async function generateRerank(query: string, documents: string[], model: 
     return documents.map(() => Math.random());
 }
 
+export async function generateLateInteractionEmbedding(texts: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[][][]> {
+    try {
+        const response = await axios.post('http://127.0.0.1:8000/late-interection-embed', {
+            model: model,
+            texts: texts
+        });
+        return response.data.embeddings;
+    } catch (error) {
+        console.error('Error fetching late interaction embeddings:', error);
+        throw error;
+    }
+}
+
 export class SparseEncoder implements IEncoder {
     async encode(chunks: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<any> {
         return generateSparseEmbedding(chunks, model);
     }
     getModelDetail(model: string) {
         return {
-             name: "SPLADE",
-             provider: "Hosted",
-             description: "Sparse Lexical and Expansion Model",
-             latency: "Medium"
+            name: "SPLADE",
+            provider: "Hosted",
+            description: "Sparse Lexical and Expansion Model",
+            latency: "Medium"
         };
     }
 }
 
 export class Reranker implements IEncoder {
     async encode(chunks: string[], model: string = "colbert-ir/colbertv2.0"): Promise<any> {
-        // This signature doesn't quite match 'rerank' which needs query + docs, 
-        // but for now we follow the pattern. 
-        // We might need to adjust IEncoder or just use the function directly.
-        throw new Error("Reranker requires query and documents");
+        return generateLateInteractionEmbedding(chunks, model);
     }
-    
+
     // Custom method for reranking
     async rerank(query: string, documents: string[], model: string): Promise<number[]> {
         return generateRerank(query, documents, model);
@@ -58,10 +72,10 @@ export class Reranker implements IEncoder {
 
     getModelDetail(model: string) {
         return {
-             name: "ColBERT",
-             provider: "Hosted",
-             description: "Late Interaction Reranker",
-             latency: "High"
+            name: "ColBERT",
+            provider: "Hosted",
+            description: "Late Interaction Reranker",
+            latency: "High"
         };
     }
 }
@@ -106,5 +120,5 @@ export class FastEmbedEncoder implements IEncoder {
             latency: "Low"
         });
         return modelDetails.get(model);
-}
+    }
 }
