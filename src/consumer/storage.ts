@@ -68,7 +68,7 @@ async function qdrantUSAStore(message: any, channel: Channel) {
         }
         channel.ack(message);
     } catch (error) {
-        console.error("Error processing mongoStore message:", error);
+        console.error("Error processing qdrantUSAStore message:", error);
         const failedQueue = `${QDRANT_USA_QUEUE}-failed`;
         await producer.publishToQueue(failedQueue, message.content.toString());
         channel.ack(message);
@@ -96,7 +96,7 @@ async function qdrantIndiaStore(message: any, channel: Channel) {
         }
         channel.ack(message);
     } catch (error) {
-        console.error("Error processing mongoStore message:", error);
+        console.error("Error processing qdrantIndiaStore message:", error);
         const failedQueue = `${QDRANT_INDIA_QUEUE}-failed`;
         await producer.publishToQueue(failedQueue, message.content.toString());
         channel.ack(message);

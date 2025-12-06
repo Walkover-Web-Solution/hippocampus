@@ -17,12 +17,13 @@ export class Encoder {
             'jinaai/jina-embeddings-v2-base-code': new FastEmbedEncoder(),
         };
         this.sparseStates = {
-            'prithivida/splade-pp-en-v1': new SparseEncoder(),
-            'bm25': new SparseEncoder(),
+            'prithivida/Splade_PP_en_v1': new SparseEncoder(),
+            'Qdrant/bm25': new SparseEncoder(),
         };
         this.rerankerStates = {
             'colbert-ir/colbertv2.0': new Reranker(),
-            'cross-encoder/ms-marco-MiniLM-L-6-v2': new Reranker(),
+            'jinaai/jina-colbert-v2': new Reranker(),
+            'answerdotai/answerai-colbert-small-v1': new Reranker(),
         };
     }
 

@@ -10,6 +10,7 @@ import { generateSparseEmbedding } from "./encoder/fast-embed";
 import { deletePoints, insert } from "./qdrant";
 import { v4 as uuidv4 } from 'uuid';
 import producer from "../config/producer";
+import _ from "lodash";
 
 type Metadata = {
     public: boolean;
@@ -77,12 +78,26 @@ export class Doc {
     //     return this;
     // }
     async store(): Promise<this> {
-        await producer.publish("chunk_exchange", {
-            action: "save",
-            collectionId: this.metadata?.collectionId,
-            resourceId: this.resourceId,
-            chunks: this.chunks
-        });
+        const isLateInteractionEnabled = (this.chunks[0].rerankVector?.length) ? true : false;
+        if (isLateInteractionEnabled) {
+            // NOTICE: In case of late interaction reranker, vector size is too large to send in one go
+            for (const chunk of this.chunks) {
+                await producer.publish("chunk_exchange", {
+                    action: "save",
+                    collectionId: this.metadata?.collectionId,
+                    resourceId: this.resourceId,
+                    chunks: [chunk]
+                });
+            }
+        } else {
+            await producer.publish("chunk_exchange", {
+                action: "save",
+                collectionId: this.metadata?.collectionId,
+                resourceId: this.resourceId,
+                chunks: this.chunks
+            });
+        }
+
         return this;
     }
 

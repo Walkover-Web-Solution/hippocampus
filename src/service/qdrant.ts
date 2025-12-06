@@ -2,7 +2,10 @@ import qdrantClient from "../config/qdrant";
 
 export async function search(collectionName: string, vector: number[], topK: number = 5, filter?: object) {
     const query: any = {
-        vector: vector,
+        vector: {
+            name: "dense",
+            vector: vector
+        },
         limit: topK,
         with_payload: true,
         params: {
@@ -90,9 +93,9 @@ export async function insert(collectionName: string, points: Array<QdrantPoint>)
                 sparseVectorsConfig = { sparse: {} };
             }
             if (firstVector.rerank) {
-                const colbertSize = firstVector.rerank[0]?.length || 128;
-                vectorsConfig.colbert = {
-                    size: colbertSize,
+                const rerankerSize = firstVector.rerank[0]?.length || 128;
+                vectorsConfig.rerank = {
+                    size: rerankerSize,
                     distance: 'Cosine',
                     multivector_config: {
                         comparator: 'max_sim'

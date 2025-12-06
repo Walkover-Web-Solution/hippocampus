@@ -20,7 +20,12 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
             model: model,
             texts: texts
         });
-        return response.data.embeddings;
+        const embeddings = response.data.embeddings;
+        return embeddings.map((emb: Record<string, number>) => {
+            const indices = Object.keys(emb).map(Number);
+            const values = Object.values(emb);
+            return { indices, values };
+        });
     } catch (error) {
         console.error('Error fetching embeddings:', error);
         throw error;
@@ -35,7 +40,7 @@ export async function generateRerank(query: string, documents: string[], model: 
 
 export async function generateLateInteractionEmbedding(texts: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[][][]> {
     try {
-        const response = await axios.post('http://127.0.0.1:8000/late-interection-embed', {
+        const response = await axios.post('http://127.0.0.1:8000/late-interaction-embed', {
             model: model,
             texts: texts
         });
@@ -47,16 +52,24 @@ export async function generateLateInteractionEmbedding(texts: string[], model: s
 }
 
 export class SparseEncoder implements IEncoder {
-    async encode(chunks: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<any> {
+    async encode(chunks: string[], model: string = "Qdrant/bm25"): Promise<any> {
         return generateSparseEmbedding(chunks, model);
     }
     getModelDetail(model: string) {
-        return {
-            name: "SPLADE",
+        const modelDetails = new Map<string, ModelDetail>();
+        modelDetails.set("prithivida/Splade_PP_en_v1", {
+            name: "Splade PP EN V1",
             provider: "Hosted",
-            description: "Sparse Lexical and Expansion Model",
-            latency: "Medium"
-        };
+            description: "Sparse model",
+            latency: "Low"
+        });
+        modelDetails.set("Qdrant/bm25", {
+            name: "BM25",
+            provider: "Hosted",
+            description: "Sparse model",
+            latency: "Low"
+        });
+        return modelDetails.get(model);
     }
 }
 
@@ -71,12 +84,26 @@ export class Reranker implements IEncoder {
     }
 
     getModelDetail(model: string) {
-        return {
-            name: "ColBERT",
+        const modelDetails = new Map<string, ModelDetail>();
+        modelDetails.set("colbert-ir/colbertv2.0", {
+            name: "Colbert v2.0",
             provider: "Hosted",
-            description: "Late Interaction Reranker",
-            latency: "High"
-        };
+            description: "Great reranker",
+            latency: "Low"
+        });
+        modelDetails.set("jinaai/jina-colbert-v2", {
+            name: "Jinaai Colbert v2.0",
+            provider: "Hosted",
+            description: "Great reranker",
+            latency: "Low"
+        });
+        modelDetails.set("answerdotai/answerai-colbert-small-v1", {
+            name: "Answerai Colbert Small v1",
+            provider: "Hosted",
+            description: "Lightweight reranker",
+            latency: "Low"
+        });
+        return modelDetails.get(model);
     }
 }
 
