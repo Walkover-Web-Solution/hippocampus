@@ -15,7 +15,7 @@ router.post('/', async (req, res, next) => {
         }
         if (!collectionId) throw new ApiError('"collectionId" is required in the request body.', 400);
         const collection = await Collection.getCollectionById(collectionId);
-        const embedding = await generateEmbedding([query], collection?.metadata?.embedding);
+        const embedding = await generateEmbedding([query], collection?.settings?.encoder);
         const searchResult = await search(collectionId, embedding[0], 5);
         res.json({ result: searchResult });
     } catch (error) {
