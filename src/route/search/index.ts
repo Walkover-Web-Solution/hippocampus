@@ -1,8 +1,8 @@
 import express from 'express';
 import { ApiError } from '../../error/api-error';
-import { generateEmbedding } from '../../service/encoder/fast-embed';
+import { generateEmbedding, generateLateInteractionEmbedding } from '../../service/encoder/fast-embed';
 import { Encoder } from '../../service/encoder';
-import { search, hybridSearch } from '../../service/qdrant';
+import { search, hybridSearch, rerank } from '../../service/qdrant';
 import Collection from '../../service/collection'
 
 const router = express.Router();
@@ -17,54 +17,32 @@ router.post('/', async (req, res, next) => {
         }
         if (!collectionId) throw new ApiError('"collectionId" is required in the request body.', 400);
         const collection = await Collection.getCollectionById(collectionId);
-        
-        const denseModel = collection?.settings?.denseModel || collection?.metadata?.embedding;
-        const sparseModel = collection?.settings?.sparseModel; // Now a string (model name)
+        const denseModel = collection?.settings?.denseModel;
+        const sparseModel = collection?.settings?.sparseModel;
         const rerankerModel = collection?.settings?.rerankerModel;
-
         const embedding = await generateEmbedding([query], denseModel);
-
-        let searchResult;
-        if (sparseModel) {
-             const sparseEmbedding = await encoder.encodeSparse([query], sparseModel);
-             // Note: sparseEmbedding return type from encodeSparse might need adjustment to match expected format
-             // But for now assuming it returns array of {indices, values}
-             searchResult = await hybridSearch(collectionId, embedding[0], sparseEmbedding[0], 50); // Fetch more for reranking
-        } else {
-             searchResult = await search(collectionId, embedding[0], 50);
-        }
+        const sparseEmbedding = sparseModel && await encoder.encodeSparse([query], sparseModel);
+        let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, embedding[0], sparseEmbedding[0], 50) : await search(collectionId, embedding[0], 50);
 
         // Reranking
         if (rerankerModel && searchResult.length > 0) {
-            const documents = searchResult.map((item: any) => item?.payload?.content || "");
-            const rerankScores = await encoder.rerank(query, documents, rerankerModel);
-            
-            // Assign scores and sort
-            searchResult = searchResult.map((item: any, index: number) => ({
+            const lateInteractionEmbedding = await generateLateInteractionEmbedding([query], rerankerModel);
+            // Candidates
+            const candidateIds = searchResult.map((item: any) => item.id);
+            // Rerank
+            const rerankedResults = await rerank(collectionId, lateInteractionEmbedding[0], candidateIds, 5);
+            // Reranked results
+            searchResult = rerankedResults.map((item: any) => ({
                 ...item,
-                score: rerankScores[index], // Overwrite score or add new field? Usually replace or add 'rerankScore'
-                rerankScore: rerankScores[index]
-            })).sort((a: any, b: any) => b.rerankScore - a.rerankScore);
+                rerankScore: item.score
+            }));
         }
-        
-        // Return top 5 after reranking
+        // Return top 5 results
         res.json({ result: searchResult.slice(0, 5) });
     } catch (error) {
         next(error);
     }
 });
 
-// router.get('/', async (req, res, next) => {
-//     try {
-//         const query = req.query.q || req.query.query;
-//         if (!query) {
-//             throw new ApiError('"query" is required in the request body.', 400);
-//         }
-//         const embedding = await generateEmbedding([query as string], EmbeddingModel['bge-large-en']);
-//         res.json({ result: embedding });
-//     } catch (error) {
-//         next(error);
-//     }
-// });
 
 export default router;

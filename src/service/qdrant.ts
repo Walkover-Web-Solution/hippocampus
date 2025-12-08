@@ -20,58 +20,54 @@ export async function search(collectionName: string, vector: number[], topK: num
 }
 
 export async function hybridSearch(collectionName: string, denseVector: number[], sparseVector: any, topK: number = 5, filter?: object) {
-    // Perform parallel searches
-    const densePromise = qdrantClient.search(collectionName, {
-        vector: {
-            name: 'dense',
-            vector: denseVector
-        },
-        limit: topK * 2, // Fetch more for fusion
-        with_payload: true,
-        filter: filter as any
-    });
-
-    const sparsePromise = qdrantClient.search(collectionName, {
-        vector: {
-            name: 'sparse',
-            vector: sparseVector
-        },
-        limit: topK * 2,
-        with_payload: true,
-        filter: filter as any
-    });
-
-    const [denseResults, sparseResults] = await Promise.all([densePromise, sparsePromise]);
-
-    // Reciprocal Rank Fusion (RRF)
-    const rrfScore: Record<string, { score: number, item: any }> = {};
-    const k = 60; // RRF constant
-
-    const processResults = (results: any[]) => {
-        results.forEach((result, index) => {
-            const id = result.id as string;
-            if (!rrfScore[id]) {
-                rrfScore[id] = { score: 0, item: result };
+    const result = await qdrantClient.query(collectionName, {
+        prefetch: [
+            {
+                using: 'dense',
+                query: denseVector,
+                limit: topK * 2,
+            },
+            {
+                using: 'sparse',
+                query: sparseVector,
+                limit: topK * 2,
             }
-            rrfScore[id].score += 1 / (k + index + 1);
-        });
-    };
+        ],
+        query: {
+            fusion: 'rrf',
+        },
+        limit: topK,
+        with_payload: true,
+    });
 
-    processResults(denseResults);
-    processResults(sparseResults);
+    return result.points;
+}
 
-    // Sort by RRF score and take topK
-    const sortedResults = Object.values(rrfScore)
-        .sort((a, b) => b.score - a.score)
-        .map(entry => entry.item)
-        .slice(0, topK);
-
-    return sortedResults;
+export async function rerank(collectionName: string, queryVectors: number[][], candidateIds: Array<string | number>, topK: number = 5) {
+    const result = await qdrantClient.query(collectionName, {
+        query: queryVectors,
+        using: "rerank",
+        filter: {
+            must: [
+                {
+                    has_id: candidateIds
+                }
+            ]
+        },
+        limit: topK,
+        with_payload: true,
+        params: {
+            indexed_only: true,
+            exact: false,
+            hnsw_ef: 128
+        }
+    });
+    return result.points;
 }
 
 export interface QdrantPoint {
     id: string | number;
-    vector: number[] | { [key: string]: any };
+    vector: { [key: string]: any };
     payload?: Record<string, any>;
 }
 
@@ -82,27 +78,23 @@ export async function insert(collectionName: string, points: Array<QdrantPoint>)
         let vectorsConfig: any = {};
         let sparseVectorsConfig: any = undefined;
 
-        if (Array.isArray(firstVector)) {
-            vectorsConfig = { size: firstVector.length, distance: 'Cosine' };
-        } else {
-            // Hybrid or named vectors
-            if (firstVector.dense) {
-                vectorsConfig.dense = { size: firstVector.dense.length, distance: 'Cosine' };
-            }
-            if (firstVector.sparse) {
-                sparseVectorsConfig = { sparse: {} };
-            }
-            if (firstVector.rerank) {
-                const rerankerSize = firstVector.rerank[0]?.length || 128;
-                vectorsConfig.rerank = {
-                    size: rerankerSize,
-                    distance: 'Cosine',
-                    multivector_config: {
-                        comparator: 'max_sim'
-                    }
-                };
-            }
+        if (firstVector.dense) {
+            vectorsConfig.dense = { size: firstVector.dense.length, distance: 'Cosine' };
         }
+        if (firstVector.sparse) {
+            sparseVectorsConfig = { sparse: {} };
+        }
+        if (firstVector.rerank) {
+            const rerankerSize = firstVector.rerank[0]?.length || 128;
+            vectorsConfig.rerank = {
+                size: rerankerSize,
+                distance: 'Cosine',
+                multivector_config: {
+                    comparator: 'max_sim'
+                }
+            };
+        }
+
 
         const createConfig: any = { vectors: vectorsConfig };
         if (sparseVectorsConfig) {
