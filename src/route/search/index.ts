@@ -20,22 +20,23 @@ router.post('/', async (req, res, next) => {
         const denseModel = collection?.settings?.denseModel;
         const sparseModel = collection?.settings?.sparseModel;
         const rerankerModel = collection?.settings?.rerankerModel;
-        const embedding = await generateEmbedding([query], denseModel);
-        const sparseEmbedding = sparseModel && await encoder.encodeSparse([query], sparseModel);
-        let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, embedding[0], sparseEmbedding[0], 50) : await search(collectionId, embedding[0], 50);
+
+        const [denseEmbedding, sparseEmbedding, lateInteractionEmbedding] = await Promise.all([
+            denseModel ? generateEmbedding([query], denseModel) : Promise.resolve([]),
+            sparseModel ? encoder.encodeSparse([query], sparseModel) : Promise.resolve(null),
+            rerankerModel ? generateLateInteractionEmbedding([query], rerankerModel) : Promise.resolve(null)
+        ]);
+
+        let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, denseEmbedding[0], sparseEmbedding[0], 50) : await search(collectionId, denseEmbedding[0], 50);
 
         // Reranking
-        if (rerankerModel && searchResult.length > 0) {
-            const lateInteractionEmbedding = await generateLateInteractionEmbedding([query], rerankerModel);
+        if (rerankerModel && lateInteractionEmbedding && searchResult.length > 0) {
             // Candidates
             const candidateIds = searchResult.map((item: any) => item.id);
             // Rerank
             const rerankedResults = await rerank(collectionId, lateInteractionEmbedding[0], candidateIds, 5);
             // Reranked results
-            searchResult = rerankedResults.map((item: any) => ({
-                ...item,
-                rerankScore: item.score
-            }));
+            searchResult = rerankedResults;
         }
         // Return top 5 results
         res.json({ result: searchResult.slice(0, 5) });
