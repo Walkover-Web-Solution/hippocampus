@@ -21,13 +21,15 @@ router.post('/', async (req, res, next) => {
         const sparseModel = collection?.settings?.sparseModel;
         const rerankerModel = collection?.settings?.rerankerModel;
 
-        const [denseEmbedding, sparseEmbedding, lateInteractionEmbedding] = await Promise.all([
-            denseModel ? generateEmbedding([query], denseModel) : Promise.resolve([]),
-            sparseModel ? encoder.encodeSparse([query], sparseModel) : Promise.resolve(null),
-            rerankerModel ? generateLateInteractionEmbedding([query], rerankerModel) : Promise.resolve(null)
-        ]);
+        const denseEmbeddingPromise = denseModel ? generateEmbedding([query], denseModel) : Promise.resolve([]);
+        const sparseEmbeddingPromise = sparseModel ? encoder.encodeSparse([query], sparseModel) : Promise.resolve(null);
+        const rerankerEmbeddingPromise = rerankerModel ? generateLateInteractionEmbedding([query], rerankerModel) : Promise.resolve(null);
+
+        const [denseEmbedding, sparseEmbedding] = await Promise.all([denseEmbeddingPromise, sparseEmbeddingPromise]);
 
         let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, denseEmbedding[0], sparseEmbedding[0], 50) : await search(collectionId, denseEmbedding[0], 50);
+
+        const lateInteractionEmbedding = await rerankerEmbeddingPromise;
 
         // Reranking
         if (rerankerModel && lateInteractionEmbedding && searchResult.length > 0) {
