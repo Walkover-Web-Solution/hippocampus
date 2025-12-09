@@ -76,14 +76,14 @@ export async function insert(collectionName: string, points: Array<QdrantPoint>)
     if (!collection.exists) {
         const firstVector = points[0].vector;
         let vectorsConfig: any = {};
-        let sparseVectorsConfig: any = undefined;
-
         if (firstVector.dense) {
-            vectorsConfig.dense = { size: firstVector.dense.length, distance: 'Cosine' };
+            vectorsConfig.dense = {
+                size: firstVector.dense.length,
+                distance: 'Cosine',
+                // on_disk: true
+            };
         }
-        if (firstVector.sparse) {
-            sparseVectorsConfig = { sparse: {} };
-        }
+
         if (firstVector.rerank) {
             const rerankerSize = firstVector.rerank[0]?.length || 128;
             vectorsConfig.rerank = {
@@ -91,17 +91,30 @@ export async function insert(collectionName: string, points: Array<QdrantPoint>)
                 distance: 'Cosine',
                 multivector_config: {
                     comparator: 'max_sim'
-                }
+                },
+                // on_disk: true
             };
         }
 
-
-        const createConfig: any = { vectors: vectorsConfig };
-        if (sparseVectorsConfig) {
-            createConfig.sparse_vectors = sparseVectorsConfig;
+        const config: any = { vectors: vectorsConfig };
+        if (firstVector.sparse) {
+            config.sparse_vectors = { sparse: {} };
         }
-
-        await qdrantClient.createCollection(collectionName, createConfig);
+        // Scalar Quantization config
+        // config.quantization_config = {
+        //     scalar: {
+        //         type: "int8",
+        //         quantile: 0.99,
+        //         always_ram: true,
+        //     }
+        // }
+        // Binary Quantization Config
+        // config.quantization_config = {
+        //     binary: {
+        //         always_ram: true,
+        //     }
+        // }
+        await qdrantClient.createCollection(collectionName, config);
         console.log(`Collection "${collectionName}" created.`);
     }
     const saveResult = await qdrantClient.upsert(collectionName, {
