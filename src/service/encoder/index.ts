@@ -90,9 +90,4 @@ export class Encoder {
         return encoder.encode(chunks, model);
     }
 
-    async rerank(query: string, documents: string[], model: string) {
-        const reranker = this.rerankerStates[model];
-        if (!reranker) throw new Error(`Reranker model ${model} not supported`);
-        return reranker.rerank(query, documents, model);
-    }
 }

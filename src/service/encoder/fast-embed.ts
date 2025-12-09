@@ -32,11 +32,6 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
     }
 }
 
-export async function generateRerank(query: string, documents: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[]> {
-    // Dummy implementation.
-    // Returns scores for each document.
-    return documents.map(() => Math.random());
-}
 
 export async function generateLateInteractionEmbedding(texts: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[][][]> {
     try {
@@ -76,11 +71,6 @@ export class SparseEncoder implements IEncoder {
 export class Reranker implements IEncoder {
     async encode(chunks: string[], model: string = "colbert-ir/colbertv2.0"): Promise<any> {
         return generateLateInteractionEmbedding(chunks, model);
-    }
-
-    // Custom method for reranking
-    async rerank(query: string, documents: string[], model: string): Promise<number[]> {
-        return generateRerank(query, documents, model);
     }
 
     getModelDetail(model: string) {
