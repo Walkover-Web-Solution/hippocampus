@@ -11,7 +11,7 @@ import { deletePoints, insert } from "./qdrant";
 import { v4 as uuidv4 } from 'uuid';
 import producer from "../config/producer";
 import _ from "lodash";
-
+import crypto from 'crypto';
 type Metadata = {
     public: boolean;
     collectionId: string;
@@ -139,6 +139,17 @@ export class MongoStorage implements Storage {
 }
 
 export class QdrantStorage implements Storage {
+    private generateContentId(text: string) {
+        if (!text) return undefined;
+        const hash = crypto.createHash('md5').update(text).digest('hex');
+        return [
+            hash.substring(0, 8),
+            hash.substring(8, 12),
+            hash.substring(12, 16),
+            hash.substring(16, 20),
+            hash.substring(20, 32)
+        ].join('-');
+    }
     async save(chunks: Chunk[]) {
         const points = chunks.map((chunk) => {
             let vector: any = {
@@ -148,7 +159,7 @@ export class QdrantStorage implements Storage {
             };
 
             return {
-                id: chunk._id!,
+                id: this.generateContentId(chunk.data) || chunk._id,
                 vector: vector,
                 payload: {
                     resourceId: chunk.resourceId,
