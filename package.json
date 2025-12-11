@@ -38,7 +38,7 @@
     "@types/response-time": "^2.3.8",
     "jest": "^29.7.0",
     "request": "^2.88.2",
-    "ts-jest": "^29.2.5",
+    "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.3"
   },

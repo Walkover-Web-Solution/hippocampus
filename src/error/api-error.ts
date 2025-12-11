@@ -1,12 +1,12 @@
-export class ApiError {
+export class ApiError extends Error {
 
-    message: string;
     code: number;
     type?: Errors;
     constructor(message: string, code: number, type?: Errors) {
+        super(message);
         this.code = code;
-        this.message = message;
         this.type = type;
+        Object.setPrototypeOf(this, ApiError.prototype);
     }
 
 }

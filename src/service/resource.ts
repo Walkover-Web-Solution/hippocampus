@@ -14,7 +14,7 @@ class ResourceService {
                 const result = await this.updateResource(id, { isDeleted: true });
                 return result as ResourceType;
             }
-            const deletedResource = await Resource.deleteOne({ docId: id });
+            const deletedResource = await Resource.deleteOne({ _id: id });
             if (!deletedResource) {
                 throw new Error(`Resource with ID ${id} not found.`);
             }
