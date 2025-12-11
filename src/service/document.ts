@@ -139,9 +139,10 @@ export class MongoStorage implements Storage {
 }
 
 export class QdrantStorage implements Storage {
-    private generateContentId(text: string) {
+    private generateContentId(text: string, collectionId: string, ownerId: string) {
         if (!text) return undefined;
-        const hash = crypto.createHash('md5').update(text).digest('hex');
+        const input = `${collectionId}:${ownerId}:${text}`;
+        const hash = crypto.createHash('md5').update(input).digest('hex');
         return [
             hash.substring(0, 8),
             hash.substring(8, 12),
@@ -159,7 +160,7 @@ export class QdrantStorage implements Storage {
             };
 
             return {
-                id: this.generateContentId(chunk.data) || chunk._id,
+                id: this.generateContentId(chunk.data, chunk.collectionId, chunk.ownerId || "public") || chunk._id,
                 vector: vector,
                 payload: {
                     resourceId: chunk.resourceId,
