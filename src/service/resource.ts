@@ -51,16 +51,7 @@ class ResourceService {
         }
     }
 
-    static async getResourcesByAgent(agentId: string): Promise<ResourceType[]> {
-        try {
 
-
-            const resources = await Resource.find({ agentId });
-            return resources;
-        } catch (error: any) {
-            throw new Error(`Failed to retrieve resources for agent: ${error.message}`);
-        }
-    }
 
     static async getResourcesByCollectionId(collectionId: string): Promise<ResourceType[]> {
         try {

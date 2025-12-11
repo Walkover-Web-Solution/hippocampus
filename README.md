@@ -76,12 +76,7 @@ npm run rag-sync
 *   **Web Scraping:** Uses `puppeteer-extra` and `cheerio`.
 *   **Vector Embeddings/LLM Integration:** Uses `langchain` and `openai` libraries.
 
-## Current State and Inconsistencies
-
-During the analysis, an inconsistency was noted regarding an `Agent` model/service. While `agentId` is referenced in `chunk` models and various services, the `Agent` model and its corresponding service (`dbservices/agent.ts`) could not be located in the expected directory (`src/dbservices`). This suggests a potential gap in the codebase or an outdated reference.
-
 ## Further Actions
 
-*   Address the `Agent` model/service inconsistency.
 *   Implement additional features related to RAG (e.g., actual embedding generation, retrieval logic).
 *   Add comprehensive tests for the newly created services and routes.
