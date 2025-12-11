@@ -2,48 +2,70 @@ import axios from "../../config/axios";
 import { IEncoder, ModelDetail } from "../utility";
 
 export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
-    try {
-        const response = await axios.post('http://127.0.0.1:8000/embed', {
-            model: model,
-            texts: texts
-        });
-        return response.data.embeddings;
-    } catch (error) {
-        console.error('Error fetching embeddings:', error);
-        throw error;
+    const batchSize = 10;
+    const embeddings: number[][] = [];
+
+    for (let i = 0; i < texts.length; i += batchSize) {
+        const batch = texts.slice(i, i + batchSize);
+        try {
+            const response = await axios.post('http://127.0.0.1:8000/embed', {
+                model: model,
+                texts: batch
+            });
+            embeddings.push(...response.data.embeddings);
+        } catch (error) {
+            console.error('Error fetching embeddings:', error);
+            throw error;
+        }
     }
+    return embeddings;
 }
 
 export async function generateSparseEmbedding(texts: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<{ indices: number[], values: number[] }[]> {
-    try {
-        const response = await axios.post('http://127.0.0.1:8000/sparse-embed', {
-            model: model,
-            texts: texts
-        });
-        const embeddings = response.data.embeddings;
-        return embeddings.map((emb: Record<string, number>) => {
-            const indices = Object.keys(emb).map(Number);
-            const values = Object.values(emb);
-            return { indices, values };
-        });
-    } catch (error) {
-        console.error('Error fetching embeddings:', error);
-        throw error;
+    const batchSize = 10;
+    const embeddings: { indices: number[], values: number[] }[] = [];
+
+    for (let i = 0; i < texts.length; i += batchSize) {
+        const batch = texts.slice(i, i + batchSize);
+        try {
+            const response = await axios.post('http://127.0.0.1:8000/sparse-embed', {
+                model: model,
+                texts: batch
+            });
+            const embeddings = response.data.embeddings;
+            const mappedEmbeddings = embeddings.map((emb: Record<string, number>) => {
+                const indices = Object.keys(emb).map(Number);
+                const values = Object.values(emb);
+                return { indices, values };
+            });
+            embeddings.push(...mappedEmbeddings);
+        } catch (error) {
+            console.error('Error fetching embeddings:', error);
+            throw error;
+        }
     }
+    return embeddings;
 }
 
 
 export async function generateLateInteractionEmbedding(texts: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[][][]> {
-    try {
-        const response = await axios.post('http://127.0.0.1:8000/late-interaction-embed', {
-            model: model,
-            texts: texts
-        });
-        return response.data.embeddings;
-    } catch (error) {
-        console.error('Error fetching late interaction embeddings:', error);
-        throw error;
+    const batchSize = 10;
+    const embeddings: number[][][] = [];
+
+    for (let i = 0; i < texts.length; i += batchSize) {
+        const batch = texts.slice(i, i + batchSize);
+        try {
+            const response = await axios.post('http://127.0.0.1:8000/late-interaction-embed', {
+                model: model,
+                texts: batch
+            });
+            embeddings.push(...response.data.embeddings);
+        } catch (error) {
+            console.error('Error fetching late interaction embeddings:', error);
+            throw error;
+        }
     }
+    return embeddings;
 }
 
 export class SparseEncoder implements IEncoder {
