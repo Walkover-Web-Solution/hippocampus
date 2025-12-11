@@ -53,9 +53,10 @@ class ResourceService {
 
 
 
-    static async getResourcesByCollectionId(collectionId: string): Promise<ResourceType[]> {
+    static async getResourcesByCollectionId(collectionId: string, ownerId: string = "public", includeContent: boolean = false): Promise<ResourceType[]> {
         try {
-            const resources = await Resource.find({ collectionId });
+            const projection = includeContent ? {} : { content: 0 };
+            const resources = await Resource.find({ collectionId, ownerId }, projection);
             return resources;
         } catch (error: any) {
             throw new Error(`Failed to retrieve resources for collection: ${error.message}`);

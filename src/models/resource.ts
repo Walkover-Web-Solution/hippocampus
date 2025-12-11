@@ -5,7 +5,7 @@ const resourceSchema = new mongoose.Schema(
     {
         title: {
             type: String,
-            required: true
+            required: false
         },
         collectionId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -50,5 +50,6 @@ const resourceSchema = new mongoose.Schema(
     }
 );
 
+resourceSchema.index({ collectionId: 1, ownerId: 1 });
 
 export const Resource = mongoose.model('Resource', resourceSchema);

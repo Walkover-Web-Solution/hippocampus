@@ -26,21 +26,21 @@ export const SparseEncoderSchema = z.string().superRefine((val, ctx) => {
 });
 
 export const RerankerSchema = z.string().superRefine((val, ctx) => {
-    if (!encoderInstance.isValidReranker(val)) {
-      const validModels = encoderInstance.getRerankerModels().map(m => m.id).join(", ");
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Invalid reranker model '${val}'. Supported models are: ${validModels}`,
-        fatal: true
-      });
-    }
-  });
+  if (!encoderInstance.isValidReranker(val)) {
+    const validModels = encoderInstance.getRerankerModels().map(m => m.id).join(", ");
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Invalid reranker model '${val}'. Supported models are: ${validModels}`,
+      fatal: true
+    });
+  }
+});
 
 
 // Define the Zod schema for the settings sub-document
 export const CollectionSettingsSchema = z.object({
   denseModel: EncoderSchema.default('BAAI/bge-small-en-v1.5'),
-  chunkSize: z.number().max(512).default(512),
+  chunkSize: z.number().max(4000).default(1000),
   chunkOverlap: z.number().default(100),
   sparseModel: SparseEncoderSchema.optional(),
   rerankerModel: RerankerSchema.optional()
@@ -54,7 +54,7 @@ export const CollectionSchema = z.object({
   metadata: z.record(z.string(), z.any()).optional(), // Map type
   settings: CollectionSettingsSchema.default({
     denseModel: 'BAAI/bge-small-en-v1.5',
-    chunkSize: 512,
+    chunkSize: 1000,
     chunkOverlap: 100,
   }), // Make settings required with a default
   createdAt: z.date().optional(),
