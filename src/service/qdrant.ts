@@ -26,11 +26,13 @@ export async function hybridSearch(collectionName: string, denseVector: number[]
                 using: 'dense',
                 query: denseVector,
                 limit: topK * 2,
+                filter: filter
             },
             {
                 using: 'sparse',
                 query: sparseVector,
                 limit: topK * 2,
+                filter: filter
             }
         ],
         query: {
@@ -116,6 +118,13 @@ export async function insert(collectionName: string, points: Array<QdrantPoint>)
         // }
         await qdrantClient.createCollection(collectionName, config);
         console.log(`Collection "${collectionName}" created.`);
+        
+        // Create payload index for ownerId for efficient multi-tenancy filtering
+        await qdrantClient.createPayloadIndex(collectionName, {
+            field_name: "ownerId",
+            field_schema: "keyword"
+        });
+        console.log(`Payload index for "ownerId" created in "${collectionName}".`);
     }
     const saveResult = await qdrantClient.upsert(collectionName, {
         wait: true,

@@ -26,8 +26,8 @@ export const ChunkEventSchema = z.object({
     data: z.object({
         resourceId: z.string(),
         collectionId: z.string(),
+        ownerId: z.string().default("public"),
         content: z.string(),
-        public: z.boolean().default(true),
         meta: z.object({
             domain: z.string().optional(),
             extension: z.string().optional()
@@ -56,7 +56,6 @@ export const UpdateEventSchema = z.object({
     data: z.object({
         resourceId: z.string(),
         collectionId: z.string(),
-        public: z.boolean(),
         timestamp: z.number()
     })
 });

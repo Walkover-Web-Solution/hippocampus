@@ -13,8 +13,8 @@ import producer from "../config/producer";
 import _ from "lodash";
 import crypto from 'crypto';
 type Metadata = {
-    public: boolean;
     collectionId: string;
+    ownerId?: string;
     [key: string]: any;
 }
 
@@ -45,8 +45,8 @@ export class Doc {
                 _id: uuidv4(),
                 data: split.pageContent,
                 resourceId: this.resourceId,
-                public: this.metadata?.public,
                 collectionId: this.metadata.collectionId,
+                ownerId: this.metadata.ownerId || "public",
             });
         }
         return this;
@@ -165,7 +165,7 @@ export class QdrantStorage implements Storage {
                     resourceId: chunk.resourceId,
                     collectionId: chunk.collectionId,
                     content: chunk.data,
-                    public: chunk.public
+                    ownerId: chunk.ownerId
                 }
             }
         });

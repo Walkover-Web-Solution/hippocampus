@@ -22,10 +22,10 @@ const chunkSchema = new Schema(
             ref: 'Collection',
             required: true
         },
-        public: {
-            type: Boolean,
+        ownerId: {
+            type: String,
             required: true,
-            default: false
+            default: "public"
         }
     },
     {

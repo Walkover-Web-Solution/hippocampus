@@ -10,7 +10,7 @@ const encoder = new Encoder();
 
 router.post('/', async (req, res, next) => {
     try {
-        const { query, collectionId } = req.body;
+        const { query, collectionId, ownerId } = req.body;
 
         if (!query) {
             throw new ApiError('"query" is required in the request body.', 400);
@@ -27,7 +27,19 @@ router.post('/', async (req, res, next) => {
 
         const [denseEmbedding, sparseEmbedding] = await Promise.all([denseEmbeddingPromise, sparseEmbeddingPromise]);
 
-        let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, denseEmbedding[0], sparseEmbedding[0], 50) : await search(collectionId, denseEmbedding[0], 50);
+        // Filter Logic: "ownerId" (default: "global")
+        const filter = {
+            must: [
+                {
+                    key: "ownerId",
+                    match: {
+                        value: ownerId || "public"
+                    }
+                }
+            ]
+        };
+
+        let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, denseEmbedding[0], sparseEmbedding[0], 50, filter) : await search(collectionId, denseEmbedding[0], 50, filter);
 
         const lateInteractionEmbedding = await rerankerEmbeddingPromise;
 

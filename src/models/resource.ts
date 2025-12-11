@@ -12,6 +12,11 @@ const resourceSchema = new mongoose.Schema(
             ref: 'Collection',
             required: true
         },
+        ownerId: {
+            type: String,
+            required: true,
+            default: "public"
+        },
         content: {
             type: String,
             required: false

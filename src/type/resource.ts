@@ -5,8 +5,8 @@ export const ResourceSchema = z.object({
   // Required fields
   title: z.string(),
   collectionId: z.string(), // MongoDB ObjectId as string
+  ownerId: z.string().default("public"),
   createdBy: z.string().optional(), // MongoDB ObjectId as string
-  public: z.boolean().optional(),
   content: z.string().optional(),
   refreshedAt: z.date().optional(),
   description: z.string().optional(),
