@@ -5,7 +5,6 @@ import rtlayer from '../config/rtlayer';
 import { EventSchema, VERSION } from '../type/rag';
 import { delay } from '../utility';
 import { DocumentLoader } from '../service/document-loader';
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import ResourceService from '../service/resource';
 import CollectionService from '../service/collection';
 import { Doc, MongoStorage, QdrantStorage } from '../service/document';
