@@ -5,7 +5,7 @@ import rabbitmq from "../config/rabbitmq";
 import producer from "../config/producer";
 import collectionService from "../service/collection";
 import { generateEmbedding, generateSparseEmbedding } from "../service/encoder/fast-embed";
-import { hybridSearch, insert, search } from "../service/qdrant";
+import { denseSearch, hybridSearch, insert } from "../service/qdrant";
 import feedbackService from "../service/feedback";
 import { generateContentId } from "../service/utility";
 const FEEDBACK_QUEUE = "search-feedback";
@@ -51,7 +51,7 @@ async function processFeedback(message: any, channel: Channel) {
         };
         const result = sparseEmbedding ?
             await hybridSearch(feedbackCollectionName, denseEmbedding[0], sparseEmbedding[0], 1, filter).catch((error) => []) :
-            await search(feedbackCollectionName, denseEmbedding[0], 1, filter).catch((error) => []);
+            await denseSearch(feedbackCollectionName, denseEmbedding[0], 1, filter).catch((error) => []);
         let feedbackId: any = result.length > 0 && result[0].score > 0.9 ? result[0].id : null;
         const feedback = await feedbackService.getFeedback(feedbackId).catch(error => undefined);
         if (!feedback) {
