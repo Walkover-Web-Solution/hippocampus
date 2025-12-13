@@ -1,5 +1,5 @@
 import redis from "../config/redis";
-
+import crypto from 'crypto';
 type StatusMessage = 'success' | 'error';
 /**
  * This class helps to build a response object that can be sent back to the client.
@@ -70,7 +70,7 @@ export function getDefaultPicture(name: string) {
 
 
 
-const pointerKey = (jobName: string) => `assistant:pointer:${jobName}`;
+const pointerKey = (jobName: string) => `hippocampus:pointer:${jobName}`;
 export class JobPointer {
 
     static async getPointer(jobName: string): Promise<string | null> {
@@ -92,4 +92,18 @@ export type ModelDetail = { name: string; provider: string; description: string;
 export interface IEncoder {
     encode(chunks: string[], model?: string): Promise<any>;
     getModelDetail(model: string): ModelDetail | undefined;
+}
+
+
+export function generateContentId(text: string, collectionId: string, ownerId: string) {
+    if (!text) return undefined;
+    const input = `${collectionId}:${ownerId}:${text}`;
+    const hash = crypto.createHash('md5').update(input).digest('hex');
+    return [
+        hash.substring(0, 8),
+        hash.substring(8, 12),
+        hash.substring(12, 16),
+        hash.substring(16, 20),
+        hash.substring(20, 32)
+    ].join('-');
 }
