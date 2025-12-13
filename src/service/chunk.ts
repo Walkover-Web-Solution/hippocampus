@@ -24,9 +24,6 @@ const deleteChunk = async (id: string): Promise<ChunkType | null> => {
 };
 const deleteChunksByResource = async (resourceId: string): Promise<any> => {
     try {
-        // const chunks = await Chunk.find({ resourceId }) as ChunkType[];
-
-        // Delete chunks from database
         const result = await Chunk.deleteMany({ resourceId });
         return result;
     } catch (error: any) {

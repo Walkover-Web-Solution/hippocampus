@@ -95,11 +95,13 @@ class Consumer {
 const consumers = CONSUMERS.map(consumer => new Consumer(consumer));
 
 process.on('SIGINT', async () => {
+  logger.error(`SIGINT received`);
   consumers.forEach(consumer => consumer.stop());
   await delay(10000);
 });
 
 process.on('SIGTERM', async () => {
+  logger.error(`SIGTERM received`);
   consumers.forEach(consumer => consumer.stop());
   await delay(10000);
 });

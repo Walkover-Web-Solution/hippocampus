@@ -18,7 +18,7 @@ const collectionSchema = new Schema(
         },
         settings: {
             type: {
-                encoder: {
+                denseModel: {
                     type: String,
                     required: true,
                     default: "BAAI/bge-small-en-v1.5"
@@ -32,6 +32,14 @@ const collectionSchema = new Schema(
                     type: Number,
                     required: true,
                     default: 200
+                },
+                sparseModel: {
+                    type: String,
+                    required: false
+                },
+                rerankerModel: {
+                    type: String,
+                    required: false
                 }
             },
             required: true,

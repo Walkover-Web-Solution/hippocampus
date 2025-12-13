@@ -14,12 +14,36 @@ export const EncoderSchema = z.string().superRefine((val, ctx) => {
   }
 });
 
+export const SparseEncoderSchema = z.string().superRefine((val, ctx) => {
+  if (!encoderInstance.isValidSparse(val)) {
+    const validModels = encoderInstance.getSparseModels().map(m => m.id).join(", ");
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Invalid sparse model '${val}'. Supported models are: ${validModels}`,
+      fatal: true
+    });
+  }
+});
+
+export const RerankerSchema = z.string().superRefine((val, ctx) => {
+  if (!encoderInstance.isValidReranker(val)) {
+    const validModels = encoderInstance.getRerankerModels().map(m => m.id).join(", ");
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Invalid reranker model '${val}'. Supported models are: ${validModels}`,
+      fatal: true
+    });
+  }
+});
+
 
 // Define the Zod schema for the settings sub-document
 export const CollectionSettingsSchema = z.object({
-  encoder: EncoderSchema.default('BAAI/bge-small-en-v1.5'),
-  chunkSize: z.number().max(512).default(512),
+  denseModel: EncoderSchema.default('BAAI/bge-small-en-v1.5'),
+  chunkSize: z.number().max(4000).default(1000),
   chunkOverlap: z.number().default(100),
+  sparseModel: SparseEncoderSchema.optional(),
+  rerankerModel: RerankerSchema.optional()
 });
 
 // Define the Zod schema for the Collection model
@@ -29,8 +53,8 @@ export const CollectionSchema = z.object({
   description: z.string().optional(),
   metadata: z.record(z.string(), z.any()).optional(), // Map type
   settings: CollectionSettingsSchema.default({
-    encoder: 'BAAI/bge-small-en-v1.5',
-    chunkSize: 512,
+    denseModel: 'BAAI/bge-small-en-v1.5',
+    chunkSize: 1000,
     chunkOverlap: 100,
   }), // Make settings required with a default
   createdAt: z.date().optional(),

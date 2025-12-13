@@ -7,3 +7,4 @@ coverage
 newrelic*
 GEMINI.md
 venv
+main.cpython-*

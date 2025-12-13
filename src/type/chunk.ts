@@ -6,8 +6,13 @@ export const ChunkSchema = z.object({
   data: z.string(),
   resourceId: z.string(), // MongoDB ObjectId as string
   collectionId: z.string(), // MongoDB ObjectId as string
-  public: z.boolean().default(false),
+  ownerId: z.string().default("public"),
   vector: z.array(z.number()).optional(),
+  sparseVector: z.object({
+    indices: z.array(z.number()),
+    values: z.array(z.number())
+  }).optional(),
+  rerankVector: z.array(z.array(z.number())).optional(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),
 });

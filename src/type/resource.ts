@@ -3,10 +3,10 @@ import { z } from "zod";
 export const ResourceSchema = z.object({
   _id: z.string().optional(), // MongoDB ObjectId as string
   // Required fields
-  title: z.string(),
+  title: z.string().optional(),
   collectionId: z.string(), // MongoDB ObjectId as string
+  ownerId: z.string().default("public"),
   createdBy: z.string().optional(), // MongoDB ObjectId as string
-  public: z.boolean().optional(),
   content: z.string().optional(),
   refreshedAt: z.date().optional(),
   description: z.string().optional(),
@@ -30,10 +30,13 @@ export const CreateResourceSchema = ResourceSchema.omit({
 export type CreateResource = z.infer<typeof CreateResourceSchema>;
 
 // Optional: Zod schema for updating a resource (all fields optional)
-export const UpdateResourceSchema = ResourceSchema.partial().omit({
-  _id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const UpdateResourceSchema = ResourceSchema.pick({
+  url: true,
+  content: true,
+  title: true,
+  description: true,
+  refreshedAt: true,
+  isDeleted: true
+})
 
 export type UpdateResource = z.infer<typeof UpdateResourceSchema>;

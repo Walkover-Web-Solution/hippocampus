@@ -14,7 +14,7 @@ class ResourceService {
                 const result = await this.updateResource(id, { isDeleted: true });
                 return result as ResourceType;
             }
-            const deletedResource = await Resource.deleteOne({ docId: id });
+            const deletedResource = await Resource.deleteOne({ _id: id });
             if (!deletedResource) {
                 throw new Error(`Resource with ID ${id} not found.`);
             }
@@ -51,20 +51,12 @@ class ResourceService {
         }
     }
 
-    static async getResourcesByAgent(agentId: string): Promise<ResourceType[]> {
+
+
+    static async getResourcesByCollectionId(collectionId: string, ownerId: string = "public", includeContent: boolean = false): Promise<ResourceType[]> {
         try {
-
-
-            const resources = await Resource.find({ agentId });
-            return resources;
-        } catch (error: any) {
-            throw new Error(`Failed to retrieve resources for agent: ${error.message}`);
-        }
-    }
-
-    static async getResourcesByCollectionId(collectionId: string): Promise<ResourceType[]> {
-        try {
-            const resources = await Resource.find({ collectionId });
+            const projection = includeContent ? {} : { content: 0 };
+            const resources = await Resource.find({ collectionId, ownerId }, projection);
             return resources;
         } catch (error: any) {
             throw new Error(`Failed to retrieve resources for collection: ${error.message}`);

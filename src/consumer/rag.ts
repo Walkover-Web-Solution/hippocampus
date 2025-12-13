@@ -5,7 +5,6 @@ import rtlayer from '../config/rtlayer';
 import { EventSchema, VERSION } from '../type/rag';
 import { delay } from '../utility';
 import { DocumentLoader } from '../service/document-loader';
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import ResourceService from '../service/resource';
 import CollectionService from '../service/collection';
 import { Doc, MongoStorage, QdrantStorage } from '../service/document';
@@ -35,13 +34,17 @@ async function processMsg(message: any, channel: Channel) {
                 pipelineStatus = "loaded";
                 break;
             case 'chunk': {
-                const doc = new Doc(data.resourceId, data.content, { public: data.public, collectionId: data.collectionId });
+                const doc = new Doc(data.resourceId, data.content, { collectionId: data.collectionId, ownerId: data.ownerId });
                 // TODO: Choose encoder and chunking strategy based on collection settings
                 const collection = await CollectionService.getCollectionById(data.collectionId);
                 if (!collection) throw new Error("Collection not found");
-                const { encoder, chunkOverlap, chunkSize } = collection.settings;
+                const { denseModel, chunkOverlap, chunkSize, sparseModel, rerankerModel } = collection.settings;
                 const chunkedDocument = await doc.chunk(chunkSize || 512, chunkOverlap || 50);
-                await chunkedDocument.encode(encoder);
+                await chunkedDocument.encode({
+                    denseModel: denseModel,
+                    sparseModel: sparseModel,
+                    rerankerModel: rerankerModel
+                });
                 await chunkedDocument.store();
                 // await updateDescription(data?.resourceId, data?.content).catch(error => logger.error(error));
                 pipelineStatus = "chunked";
@@ -53,7 +56,7 @@ async function processMsg(message: any, channel: Channel) {
                     break;
                 }
             case 'delete': {
-                const doc = new Doc(data.resourceId, undefined, { public: true, collectionId: data.collectionId });
+                const doc = new Doc(data.resourceId, undefined, { collectionId: data.collectionId });
                 await doc.delete();
                 pipelineStatus = "deleted";
                 break;

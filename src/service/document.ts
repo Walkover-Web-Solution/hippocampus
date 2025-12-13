@@ -1,4 +1,4 @@
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import env from "../config/env";
 import { Chunk } from "../type/chunk";
@@ -6,13 +6,15 @@ import ChunkService from "../service/chunk";
 import mongoose from "mongoose";
 import { IEncoder } from "./utility";
 import { Encoder } from "./encoder";
+import { generateSparseEmbedding } from "./encoder/fast-embed";
 import { deletePoints, insert } from "./qdrant";
 import { v4 as uuidv4 } from 'uuid';
 import producer from "../config/producer";
-
+import _ from "lodash";
+import crypto from 'crypto';
 type Metadata = {
-    public: boolean;
     collectionId: string;
+    ownerId?: string;
     [key: string]: any;
 }
 
@@ -43,22 +45,29 @@ export class Doc {
                 _id: uuidv4(),
                 data: split.pageContent,
                 resourceId: this.resourceId,
-                public: this.metadata?.public,
                 collectionId: this.metadata.collectionId,
+                ownerId: this.metadata.ownerId || "public",
             });
         }
         return this;
     }
 
-    async encode(model: string): Promise<this> {
+    async encode({ denseModel, sparseModel, rerankerModel }: any): Promise<this> {
         const chunkTexts = this.chunks.map((chunk) => chunk.data);
         const encoder = new Encoder();
         const startTime = performance.now();
-        const embeddings = await encoder.encode(chunkTexts, model);
+        const embeddings = {
+            denseVectors: await encoder.encode(chunkTexts, denseModel),
+            sparseVectors: sparseModel ? await encoder.encodeSparse(chunkTexts, sparseModel) : undefined,
+            rerankVectors: rerankerModel ? await encoder.encodeReranker(chunkTexts, rerankerModel) : undefined,
+        }
+
         const duration = Math.round(performance.now() - startTime);
-        console.log(`Encoding ${this.chunks.length} chunks with ${model} took ${duration}ms`);
+        console.log(`Encoding ${this.chunks.length} chunks with (${denseModel} | ${sparseModel} | ${rerankerModel}) took ${duration}ms`);
         this.chunks = this.chunks.map((chunk, index) => {
-            chunk.vector = embeddings[index];
+            chunk.vector = embeddings.denseVectors[index];
+            chunk.sparseVector = embeddings.sparseVectors ? embeddings.sparseVectors[index] : undefined;
+            chunk.rerankVector = embeddings.rerankVectors ? embeddings.rerankVectors[index] : undefined;
             return chunk;
         });
         return this;
@@ -69,12 +78,26 @@ export class Doc {
     //     return this;
     // }
     async store(): Promise<this> {
-        await producer.publish("chunk_exchange", {
-            action: "save",
-            collectionId: this.metadata?.collectionId,
-            resourceId: this.resourceId,
-            chunks: this.chunks
-        });
+        const isLateInteractionEnabled = (this.chunks[0].rerankVector?.length) ? true : false;
+        if (isLateInteractionEnabled) {
+            // NOTICE: In case of late interaction reranker, vector size is too large to send in one go
+            for (const chunk of this.chunks) {
+                await producer.publish("chunk_exchange", {
+                    action: "save",
+                    collectionId: this.metadata?.collectionId,
+                    resourceId: this.resourceId,
+                    chunks: [chunk]
+                });
+            }
+        } else {
+            await producer.publish("chunk_exchange", {
+                action: "save",
+                collectionId: this.metadata?.collectionId,
+                resourceId: this.resourceId,
+                chunks: this.chunks
+            });
+        }
+
         return this;
     }
 
@@ -116,16 +139,34 @@ export class MongoStorage implements Storage {
 }
 
 export class QdrantStorage implements Storage {
+    private generateContentId(text: string, collectionId: string, ownerId: string) {
+        if (!text) return undefined;
+        const input = `${collectionId}:${ownerId}:${text}`;
+        const hash = crypto.createHash('md5').update(input).digest('hex');
+        return [
+            hash.substring(0, 8),
+            hash.substring(8, 12),
+            hash.substring(12, 16),
+            hash.substring(16, 20),
+            hash.substring(20, 32)
+        ].join('-');
+    }
     async save(chunks: Chunk[]) {
         const points = chunks.map((chunk) => {
+            let vector: any = {
+                dense: chunk.vector,
+                sparse: chunk.sparseVector ? chunk.sparseVector : undefined,
+                rerank: chunk.rerankVector ? chunk.rerankVector : undefined,
+            };
+
             return {
-                id: chunk._id!,
-                vector: chunk.vector,
+                id: this.generateContentId(chunk.data, chunk.collectionId, chunk.ownerId || "public") || chunk._id,
+                vector: vector,
                 payload: {
                     resourceId: chunk.resourceId,
                     collectionId: chunk.collectionId,
                     content: chunk.data,
-                    public: chunk.public
+                    ownerId: chunk.ownerId
                 }
             }
         });
