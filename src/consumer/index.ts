@@ -98,10 +98,12 @@ process.on('SIGINT', async () => {
   logger.error(`SIGINT received`);
   consumers.forEach(consumer => consumer.stop());
   await delay(10000);
+  process.exit();
 });
 
 process.on('SIGTERM', async () => {
   logger.error(`SIGTERM received`);
   consumers.forEach(consumer => consumer.stop());
   await delay(10000);
+  process.exit();
 });
