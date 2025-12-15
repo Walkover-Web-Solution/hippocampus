@@ -10,7 +10,7 @@ const encoder = new Encoder();
 
 router.post('/', async (req, res, next) => {
     try {
-        const { query, collectionId, ownerId } = req.body;
+        const { query, collectionId, ownerId, resourceId } = req.body;
 
         if (!query) {
             throw new ApiError('"query" is required in the request body.', 400);
@@ -38,6 +38,7 @@ router.post('/', async (req, res, next) => {
                 }
             ]
         };
+        if (resourceId) filter.must.push({ key: "resourceId", match: { value: resourceId } });
 
         let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, denseEmbedding[0], sparseEmbedding[0], 50, filter) : await search(collectionId, denseEmbedding[0], 50, filter);
 
