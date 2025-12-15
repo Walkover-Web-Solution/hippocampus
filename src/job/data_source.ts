@@ -165,6 +165,7 @@ class PublishEvent extends Transform {
                         data: {
                             resourceId: fullDocument._id?.toString(),
                             collectionId: fullDocument.collectionId?.toString(),
+                            ownerId: fullDocument.ownerId,
                             url: url,
                             meta: {
                                 domain: request.metaData?.domain,
@@ -181,6 +182,7 @@ class PublishEvent extends Transform {
                             resourceId: fullDocument._id?.toString(),
                             collectionId: fullDocument.collectionId?.toString(),
                             content: fullDocument.content,
+                            ownerId: fullDocument.ownerId,
                             public: fullDocument.public,
                             meta: {
                                 domain: request.metaData?.domain,
@@ -208,6 +210,7 @@ class PublishEvent extends Transform {
                             resourceId: fullDocument._id?.toString(),
                             collectionId: fullDocument.collectionId?.toString(),
                             url: url,
+                            ownerId: fullDocument.ownerId,
                             meta: {
                                 domain: request?.metaData?.domain,
                                 extension: request?.metaData?.extension
@@ -239,6 +242,7 @@ class PublishEvent extends Transform {
                             collectionId: fullDocument.collectionId?.toString(),
                             content: fullDocument.content,
                             public: fullDocument.public,
+                            ownerId: fullDocument.ownerId,
                             meta: {
                                 domain: request?.metaData?.domain,
                                 extension: request?.metaData?.extension
