@@ -23,7 +23,7 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
 
 export async function generateSparseEmbedding(texts: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<{ indices: number[], values: number[] }[]> {
     const batchSize = 10;
-    const embeddings: { indices: number[], values: number[] }[] = [];
+    const result: { indices: number[], values: number[] }[] = [];
 
     for (let i = 0; i < texts.length; i += batchSize) {
         const batch = texts.slice(i, i + batchSize);
@@ -44,7 +44,7 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
             throw error;
         }
     }
-    return embeddings;
+    return result;
 }
 
 
