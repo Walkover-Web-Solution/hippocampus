@@ -6,6 +6,7 @@ import { search, hybridSearch, rerank } from '../../service/qdrant';
 import Collection from '../../service/collection'
 import { v4 as uuidv4 } from 'uuid';
 import redis from '../../config/redis';
+import feedbackService from '../../service/feedback';
 
 const router = express.Router();
 const encoder = new Encoder();
@@ -56,7 +57,7 @@ router.post('/', async (req, res, next) => {
             searchResult = rerankedResults;
         }
 
-        const finalResults = searchResult.slice(0, 5);
+        let finalResults = searchResult.slice(0, 10);
 
         if (isReview) {
             const baseUrl = `${req.protocol}://${req.get('host')}/feedback/vote`;
@@ -79,6 +80,31 @@ router.post('/', async (req, res, next) => {
                     downvoteUrl: `${baseUrl}/${feedbackId}/downvote`
                 };
             }));
+        } else {
+            const resultMap = new Map();
+            for (const item of finalResults) {
+                resultMap.set(item.id, item);
+            }
+            const colId = 'feedback_' + collectionId;
+            const feedback = await search(colId, denseEmbedding[0], 1, filter);
+            console.log(feedback)
+            if (feedback.length >= 1) {
+                const { id } = feedback[0];
+                const metadata = await feedbackService.getFeedback(id as string);
+                console.log(metadata);
+                if (metadata)
+                    for (const fb of metadata?.hits) {
+                        const [key, value] = fb;
+                        const result = resultMap.get(key);
+                        if (result) {
+
+                            result.score = value.count + result.score || 0;
+                            console.log(result.score);
+                        }
+                    }
+                finalResults = Array.from(resultMap.values()).sort((a, b) => b.score - a.score);
+            }
+
         }
 
         // Return top 5 results
