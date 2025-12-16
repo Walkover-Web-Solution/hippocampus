@@ -6,5 +6,6 @@ logs
 coverage
 newrelic*
 GEMINI.md
+FEEDBACK.md
 venv
 main.cpython-*
