@@ -38,7 +38,7 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
                 const values = Object.values(emb);
                 return { indices, values };
             });
-            embeddings.push(...mappedEmbeddings);
+            result.push(...mappedEmbeddings);
         } catch (error) {
             console.error('Error fetching embeddings:', error);
             throw error;
