@@ -8,7 +8,7 @@ import { generateEmbedding } from "../service/encoder/fast-embed";
 import { hybridSearch, insert, search } from "../service/qdrant";
 import feedbackService from "../service/feedback";
 import { generateContentId } from "../service/utility";
-const FEEDBACK_QUEUE = "feedback-queue";
+const FEEDBACK_QUEUE = "search-feedback";
 
 type Payload = {
     query: string;
