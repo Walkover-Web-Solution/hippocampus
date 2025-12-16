@@ -53,7 +53,7 @@ class ResourceService {
 
 
 
-    static async getResourcesByCollectionId(collectionId: string, ownerId: string = "public", includeContent: boolean = false): Promise<ResourceType[]> {
+    static async getResourcesByCollectionId(collectionId: string, ownerId: string, includeContent: boolean = false): Promise<ResourceType[]> {
         try {
             const projection = includeContent ? {} : { content: 0 };
             const filter: Record<string, any> = { collectionId, isDeleted: false };
