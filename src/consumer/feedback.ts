@@ -4,7 +4,7 @@ import { MongoStorage, QdrantStorage } from "../service/document";
 import rabbitmq from "../config/rabbitmq";
 import producer from "../config/producer";
 import collectionService from "../service/collection";
-import { generateEmbedding } from "../service/encoder/fast-embed";
+import { generateEmbedding, generateSparseEmbedding } from "../service/encoder/fast-embed";
 import { hybridSearch, insert, search } from "../service/qdrant";
 import feedbackService from "../service/feedback";
 import { generateContentId } from "../service/utility";
@@ -35,15 +35,25 @@ async function processFeedback(message: any, channel: Channel) {
         if (!denseModel) throw new Error("Dense model is not defined for the collection.");
         const sparseModel = collection.settings.sparseModel;
         const denseEmbedding = await generateEmbedding([userQuery], denseModel);
-        const sparseEmbedding = sparseModel ? await generateEmbedding([userQuery], sparseModel) : null;
+        const sparseEmbedding = sparseModel ? await generateSparseEmbedding([userQuery], sparseModel) : null;
         // Step 3: Check for similar query is in Qdrant
         const feedbackCollectionName = `feedback_${collectionId}`;
         // TODO : Maybe we can update the feedback for all the queries with score > 0.9 not just one
+        const filter = {
+            must: [
+                {
+                    key: "ownerId",
+                    match: {
+                        value: ownerId || "public"
+                    }
+                }
+            ]
+        };
         const result = sparseEmbedding ?
-            await hybridSearch(feedbackCollectionName, denseEmbedding[0], sparseEmbedding[0], 1, { ownerId }) :
-            await search(feedbackCollectionName, denseEmbedding[0], 1, { ownerId });
+            await hybridSearch(feedbackCollectionName, denseEmbedding[0], sparseEmbedding[0], 1, filter).catch((error) => []) :
+            await search(feedbackCollectionName, denseEmbedding[0], 1, filter).catch((error) => []);
         let feedbackId: any = result.length > 0 && result[0].score > 0.9 ? result[0].id : null;
-        const feedback = feedbackService.getFeedback(feedbackId);
+        const feedback = await feedbackService.getFeedback(feedbackId).catch(error => undefined);
         if (!feedback) {
             feedbackId = generateContentId(userQuery, collectionId, ownerId);
             const vector = { dense: denseEmbedding[0], sparse: sparseEmbedding ? sparseEmbedding[0] : undefined };
