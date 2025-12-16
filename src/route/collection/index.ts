@@ -19,11 +19,14 @@ router.post('/', async (req, res, next) => {
 
 router.get('/:id/resources', async (req, res, next) => {
     try {
-        const ownerId = req.query.ownerId as string || "public";
+        const ownerId = req.query.ownerId as string;
         const includeContent = req.query.content === 'true';
         const resources: Resource[] = await ResourceService.getResourcesByCollectionId(req.params.id, ownerId, includeContent);
         res.json({
-            resources: resources
+            resources: resources,
+            metadata: {
+                total: resources.length
+            }
         });
     } catch (error) {
         next(error);
