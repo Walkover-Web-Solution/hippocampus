@@ -12,6 +12,7 @@ import collectionRouter from './route/collection';
 import resourceRouter from './route/resource';
 import searchRouter from './route/search';
 import utilityRouter from './route/utility';
+import feedbackRouter from './route/feedback';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -38,12 +39,9 @@ app.use('/collection', auth([AuthMethod.API_KEY]), collectionRouter);
 app.use('/resource', auth([AuthMethod.API_KEY]), resourceRouter);
 app.use('/search', auth([AuthMethod.API_KEY]), searchRouter);
 app.use('/utility', auth([AuthMethod.API_KEY]), utilityRouter);
+app.use('/feedback', auth([AuthMethod.API_KEY]), feedbackRouter);
 app.get('/doc', (req: Request, res: Response) => {
     res.redirect('https://www.postman.com/cloudvulture/rag-service/collection/6unm4q7/api-documentation');
-});
-
-app.get('/feedback', (req: Request, res: Response) => {
-    res.send("Comming soon!");
 });
 
 app.use(errorHandler as any);
