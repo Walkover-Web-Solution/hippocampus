@@ -3,7 +3,6 @@ import { ApiError } from '../../error/api-error';
 import { search } from '../../service/search';
 import { v4 as uuidv4 } from 'uuid';
 import redis from '../../config/redis';
-import feedbackService from '../../service/feedback';
 
 const router = express.Router();
 
@@ -39,6 +38,7 @@ router.post('/', async (req, res, next) => {
                 };
             }));
         }
+
         // Return top 5 results
         res.json({ result: finalResults.slice(0, 5) });
     } catch (error) {
