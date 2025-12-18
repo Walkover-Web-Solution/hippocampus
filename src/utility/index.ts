@@ -17,7 +17,7 @@ export async function validateCustomChunkingUrl(url: string): Promise<boolean> {
             resourceId: "validation",
             collectionId: "validation",
             metadata: { type: "validation" }
-        }, { timeout: 5000 }); // 5s timeout
+        }, { timeout: 60*1000 }); // 1 minute timeout
 
         if (response.data && Array.isArray(response.data.chunks) && response.data.chunks.every((c: any) => typeof c === 'string')) {
             return true;
