@@ -9,7 +9,7 @@ const router = express.Router();
 
 router.post('/', async (req, res, next) => {
     try {
-        const validatedData = CreateResourceSchema.parse(req.body);
+        const validatedData = await CreateResourceSchema.parseAsync(req.body);
         const resource: Resource = await ResourceService.createResource(validatedData);
         res.status(201).json(resource);
     } catch (error) {
@@ -44,7 +44,7 @@ router.get('/:id/chunks', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
     try {
-        const validatedData = ResourceSchema.pick({ "url": true, "content": true, "title": true, "description": true, "settings": true }).parse(req.body);
+        const validatedData = await ResourceSchema.pick({ "content": true, "title": true, "description": true, "settings": true }).parseAsync(req.body);
         const resource: Resource | null = await ResourceService.updateResource(req.params.id, validatedData);
         if (!resource) {
             throw new ApiError('Resource not found', 404);

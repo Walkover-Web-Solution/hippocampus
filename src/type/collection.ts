@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Encoder } from '../service/encoder';
+import { validateCustomChunkingUrl } from '../utility';
 
 const encoderInstance = new Encoder();
 
@@ -48,13 +49,26 @@ export const ChunkingSettingsBaseSchema = z.object({
   chunkingUrl: z.string().url().optional()
 });
 
-export const chunkingSettingsRefinement = (data: any, ctx: z.RefinementCtx) => {
-  if (data.strategy === "custom" && !data.chunkingUrl) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "chunkingUrl is required when strategy is 'custom'",
-      path: ["chunkingUrl"]
-    });
+export const chunkingSettingsRefinement = async (data: any, ctx: z.RefinementCtx) => {
+  if (data.strategy === "custom") {
+    if (!data.chunkingUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "chunkingUrl is required when strategy is 'custom'",
+        path: ["chunkingUrl"]
+      });
+      return;
+    }
+
+    // Validate the URL
+    const isValid = await validateCustomChunkingUrl(data.chunkingUrl);
+    if (!isValid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "chunkingUrl must return a valid JSON object with a 'chunks' array of strings. Payload sent: { content: 'Health check', ... }",
+        path: ["chunkingUrl"]
+      });
+    }
   }
 };
 

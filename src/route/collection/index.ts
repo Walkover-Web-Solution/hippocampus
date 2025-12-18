@@ -9,7 +9,7 @@ const router = express.Router();
 
 router.post('/', async (req, res, next) => {
     try {
-        const validatedData = CreateCollectionSchema.parse(req.body);
+        const validatedData = await CreateCollectionSchema.parseAsync(req.body);
         const collection: Collection = await CollectionService.createCollection(validatedData);
         res.status(201).json(collection);
     } catch (error) {
@@ -47,7 +47,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
     try {
-        const validatedData = UpdateCollectionSchema.parse(req.body);
+        const validatedData = await UpdateCollectionSchema.parseAsync(req.body);
         const collection: Collection | null = await CollectionService.updateCollection(req.params.id, validatedData);
         if (!collection) {
             throw new ApiError('Collection not found', 404);
