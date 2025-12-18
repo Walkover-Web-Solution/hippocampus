@@ -44,13 +44,13 @@ async function processMsg(message: any, channel: Channel) {
                 const resourceSettings = resource?.settings;
 
                 const { denseModel, chunkOverlap, chunkSize, sparseModel, rerankerModel, strategy, chunkingUrl } = collection.settings;
-
-                const finalChunkSize = resourceSettings?.chunkSize || chunkSize || 512;
-                const finalChunkOverlap = resourceSettings?.chunkOverlap || chunkOverlap || 50;
-                const finalStrategy = resourceSettings?.strategy || strategy || DEFAULT_CHUNKING_STRATEGY;
-                const finalChunkingUrl = resourceSettings?.chunkingUrl || chunkingUrl;
-
-                const chunkedDocument = await doc.chunk(finalChunkSize, finalChunkOverlap, finalStrategy, finalChunkingUrl);
+                const chunkSetting = {
+                    size: resourceSettings?.chunkSize || chunkSize || 512,
+                    overlap: resourceSettings?.chunkOverlap || chunkOverlap || 50,
+                    strategy: resourceSettings?.strategy || strategy || DEFAULT_CHUNKING_STRATEGY,
+                    url: resourceSettings?.chunkingUrl || chunkingUrl
+                }
+                const chunkedDocument = await doc.chunk(chunkSetting);
                 await chunkedDocument.encode({
                     denseModel: denseModel,
                     sparseModel: sparseModel,

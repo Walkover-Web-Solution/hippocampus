@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import producer from "../config/producer";
 import _ from "lodash";
 import crypto from 'crypto';
-import { DEFAULT_CHUNKING_STRATEGY } from "../type/collection";
+import { ChunkingStrategy, DEFAULT_CHUNKING_STRATEGY } from "../type/collection";
 import axios from "axios";
 type Metadata = {
     collectionId: string;
@@ -32,28 +32,28 @@ export class Doc {
         this.chunks = [];
     }
 
-    async chunk(chunkSize: number, overlap: number = 0, strategy: string = DEFAULT_CHUNKING_STRATEGY, chunkingUrl?: string) {
+    async chunk(setting: { size: number; overlap: number; strategy: ChunkingStrategy; url?: string; }): Promise<this> {
         if (!this.content) throw new Error("Content is required for chunking");
         if (!this?.metadata?.collectionId) throw new Error("CollectionId is required for chunking");
         this.chunks = []
 
         let splits: any[] = [];
 
-        switch (strategy) {
-            case "resursive": {
+        switch (setting.strategy) {
+            case "recursive": {
                 const textSplitter = new RecursiveCharacterTextSplitter({
-                    chunkSize: chunkSize,
-                    chunkOverlap: overlap,
+                    chunkSize: setting.size,
+                    chunkOverlap: setting.overlap,
                 });
                 splits = await textSplitter.splitDocuments([{ pageContent: this.content, metadata: {} }]);
                 break;
             }
             case "custom": {
-                if (!chunkingUrl) {
+                if (!setting.url) {
                     throw new Error("Chunking URL is required for custom strategy");
                 }
                 try {
-                    const response = await axios.post(chunkingUrl, {
+                    const response = await axios.post(setting.url, {
                         content: this.content,
                         resourceId: this.resourceId,
                         collectionId: this.metadata.collectionId,
@@ -72,11 +72,11 @@ export class Doc {
                 break;
             }
             default: {
-                console.warn(`Strategy ${strategy} is not implemented yet. Defaulting to recursive.`);
+                console.warn(`Strategy ${setting.strategy} is not implemented yet. Defaulting to recursive.`);
                 // Fallback to recursive for now
                 const textSplitter = new RecursiveCharacterTextSplitter({
-                    chunkSize: chunkSize,
-                    chunkOverlap: overlap,
+                    chunkSize: setting.size,
+                    chunkOverlap: setting.overlap,
                 });
                 splits = await textSplitter.splitDocuments([{ pageContent: this.content, metadata: {} }]);
             }
