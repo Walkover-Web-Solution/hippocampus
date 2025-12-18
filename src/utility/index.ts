@@ -9,3 +9,21 @@ export function delay(time = 1000) {
         }, time)
     });
 }
+
+export async function validateCustomChunkingUrl(url: string): Promise<boolean> {
+    try {
+        const response = await axios.post(url, {
+            content: "Health check",
+            resourceId: "validation",
+            collectionId: "validation",
+            metadata: { type: "validation" }
+        }, { timeout: 60*1000 }); // 1 minute timeout
+
+        if (response.data && Array.isArray(response.data.chunks) && response.data.chunks.every((c: any) => typeof c === 'string')) {
+            return true;
+        }
+        return false;
+    } catch (error) {
+        return false;
+    }
+}
