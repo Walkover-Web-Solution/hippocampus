@@ -12,6 +12,8 @@ import { v4 as uuidv4 } from 'uuid';
 import producer from "../config/producer";
 import _ from "lodash";
 import crypto from 'crypto';
+import { DEFAULT_CHUNKING_STRATEGY } from "../type/collection";
+import axios from "axios";
 type Metadata = {
     collectionId: string;
     ownerId?: string;
@@ -30,16 +32,52 @@ export class Doc {
         this.chunks = [];
     }
 
-    async chunk(chunkSize: number, overlap: number = 0) {
+    async chunk(chunkSize: number, overlap: number = 0, strategy: string = DEFAULT_CHUNKING_STRATEGY, chunkingUrl?: string) {
         if (!this.content) throw new Error("Content is required for chunking");
         if (!this?.metadata?.collectionId) throw new Error("CollectionId is required for chunking");
         this.chunks = []
 
-        const textSplitter = new RecursiveCharacterTextSplitter({
-            chunkSize: chunkSize,
-            chunkOverlap: overlap,
-        });
-        const splits = await textSplitter.splitDocuments([{ pageContent: this.content, metadata: {} }]);
+        let splits: any[] = [];
+
+        if (strategy === "custom") {
+            if (!chunkingUrl) {
+                throw new Error("Chunking URL is required for custom strategy");
+            }
+            try {
+                const response = await axios.post(chunkingUrl, {
+                    content: this.content,
+                    resourceId: this.resourceId,
+                    collectionId: this.metadata.collectionId,
+                    metadata: this.metadata
+                });
+
+                if (response.data && Array.isArray(response.data.chunks)) {
+                    splits = response.data.chunks.map((chunkContent: string) => ({ pageContent: chunkContent }));
+                } else {
+                     throw new Error("Invalid response format from custom chunking service. Expected { chunks: string[] }");
+                }
+
+            } catch (error: any) {
+                 throw new Error(`Custom chunking failed: ${error.message}`);
+            }
+
+        } else if (strategy !== "recursive") {
+            console.warn(`Strategy ${strategy} is not implemented yet. Defaulting to recursive.`);
+            // Fallback to recursive for now
+             const textSplitter = new RecursiveCharacterTextSplitter({
+                chunkSize: chunkSize,
+                chunkOverlap: overlap,
+            });
+            splits = await textSplitter.splitDocuments([{ pageContent: this.content, metadata: {} }]);
+
+        } else {
+             const textSplitter = new RecursiveCharacterTextSplitter({
+                chunkSize: chunkSize,
+                chunkOverlap: overlap,
+            });
+            splits = await textSplitter.splitDocuments([{ pageContent: this.content, metadata: {} }]);
+        }
+
         for (const split of splits) {
             this.chunks.push({
                 _id: uuidv4(),

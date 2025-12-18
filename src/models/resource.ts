@@ -1,4 +1,5 @@
 import { Timestamp } from "bson";
+import { CHUNKING_STRATEGIES, DEFAULT_CHUNKING_STRATEGY } from "../type/collection";
 
 const mongoose = require('mongoose');
 const resourceSchema = new mongoose.Schema(
@@ -42,6 +43,30 @@ const resourceSchema = new mongoose.Schema(
         isDeleted: {
             type: Boolean,
             default: false
+        },
+        settings: {
+            type: {
+                chunkSize: {
+                    type: Number,
+                    required: false
+                },
+                chunkOverlap: {
+                    type: Number,
+                    required: false
+                },
+                strategy: {
+                    type: String,
+                    enum: CHUNKING_STRATEGIES,
+                    default: DEFAULT_CHUNKING_STRATEGY,
+                    required: false
+                },
+                chunkingUrl: {
+                    type: String,
+                    required: false
+                }
+            },
+            required: false,
+            _id: false
         }
     },
     {

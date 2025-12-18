@@ -9,6 +9,7 @@ import ResourceService from '../service/resource';
 import CollectionService from '../service/collection';
 import { Doc, MongoStorage, QdrantStorage } from '../service/document';
 import env from '../config/env';
+import { DEFAULT_CHUNKING_STRATEGY } from '../type/collection';
 
 
 const QUEUE_NAME = process.env.RAG_QUEUE || 'rag';
@@ -38,8 +39,18 @@ async function processMsg(message: any, channel: Channel) {
                 // TODO: Choose encoder and chunking strategy based on collection settings
                 const collection = await CollectionService.getCollectionById(data.collectionId);
                 if (!collection) throw new Error("Collection not found");
-                const { denseModel, chunkOverlap, chunkSize, sparseModel, rerankerModel } = collection.settings;
-                const chunkedDocument = await doc.chunk(chunkSize || 512, chunkOverlap || 50);
+
+                const resource = await ResourceService.getResourceById(data.resourceId);
+                const resourceSettings = resource?.settings;
+
+                const { denseModel, chunkOverlap, chunkSize, sparseModel, rerankerModel, strategy, chunkingUrl } = collection.settings;
+
+                const finalChunkSize = resourceSettings?.chunkSize || chunkSize || 512;
+                const finalChunkOverlap = resourceSettings?.chunkOverlap || chunkOverlap || 50;
+                const finalStrategy = resourceSettings?.strategy || strategy || DEFAULT_CHUNKING_STRATEGY;
+                const finalChunkingUrl = resourceSettings?.chunkingUrl || chunkingUrl;
+
+                const chunkedDocument = await doc.chunk(finalChunkSize, finalChunkOverlap, finalStrategy, finalChunkingUrl);
                 await chunkedDocument.encode({
                     denseModel: denseModel,
                     sparseModel: sparseModel,

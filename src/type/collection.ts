@@ -36,15 +36,38 @@ export const RerankerSchema = z.string().superRefine((val, ctx) => {
   }
 });
 
+export const CHUNKING_STRATEGIES = ["recursive", "semantic", "agentic", "custom"] as const;
+export const ChunkingStrategySchema = z.enum(CHUNKING_STRATEGIES);
+export type ChunkingStrategy = z.infer<typeof ChunkingStrategySchema>;
+export const DEFAULT_CHUNKING_STRATEGY: ChunkingStrategy = "recursive";
 
-// Define the Zod schema for the settings sub-document
-export const CollectionSettingsSchema = z.object({
-  denseModel: EncoderSchema.default('BAAI/bge-small-en-v1.5'),
+export const ChunkingSettingsBaseSchema = z.object({
   chunkSize: z.number().max(4000).default(1000),
   chunkOverlap: z.number().default(100),
-  sparseModel: SparseEncoderSchema.optional(),
-  rerankerModel: RerankerSchema.optional()
+  strategy: ChunkingStrategySchema.default(DEFAULT_CHUNKING_STRATEGY),
+  chunkingUrl: z.string().url().optional()
 });
+
+export const chunkingSettingsRefinement = (data: any, ctx: z.RefinementCtx) => {
+  if (data.strategy === "custom" && !data.chunkingUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "chunkingUrl is required when strategy is 'custom'",
+      path: ["chunkingUrl"]
+    });
+  }
+};
+
+export const ChunkingSettingsSchema = ChunkingSettingsBaseSchema.superRefine(chunkingSettingsRefinement);
+
+export type ChunkingSettings = z.infer<typeof ChunkingSettingsSchema>;
+
+// Define the Zod schema for the settings sub-document
+export const CollectionSettingsSchema = ChunkingSettingsBaseSchema.extend({
+  denseModel: EncoderSchema.default('BAAI/bge-small-en-v1.5'),
+  sparseModel: SparseEncoderSchema.optional(),
+  rerankerModel: RerankerSchema.optional(),
+}).superRefine(chunkingSettingsRefinement);
 
 // Define the Zod schema for the Collection model
 export const CollectionSchema = z.object({
@@ -56,6 +79,7 @@ export const CollectionSchema = z.object({
     denseModel: 'BAAI/bge-small-en-v1.5',
     chunkSize: 1000,
     chunkOverlap: 100,
+    strategy: 'recursive'
   }), // Make settings required with a default
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),

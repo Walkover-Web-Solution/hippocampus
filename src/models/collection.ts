@@ -1,5 +1,5 @@
 import { Document, Schema, model } from 'mongoose';
-import { Collection as CollectionType } from '../type/collection';
+import { Collection as CollectionType, CHUNKING_STRATEGIES, DEFAULT_CHUNKING_STRATEGY } from '../type/collection';
 
 const collectionSchema = new Schema(
     {
@@ -38,6 +38,16 @@ const collectionSchema = new Schema(
                     required: false
                 },
                 rerankerModel: {
+                    type: String,
+                    required: false
+                },
+                strategy: {
+                    type: String,
+                    enum: CHUNKING_STRATEGIES,
+                    default: DEFAULT_CHUNKING_STRATEGY,
+                    required: true
+                },
+                chunkingUrl: {
                     type: String,
                     required: false
                 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ChunkingSettingsBaseSchema, chunkingSettingsRefinement } from "./collection";
 
 export const ResourceSchema = z.object({
   _id: z.string().optional(), // MongoDB ObjectId as string
@@ -13,6 +14,7 @@ export const ResourceSchema = z.object({
   url: z.string().url().optional(),
   metadata: z.record(z.any()).optional(),
   isDeleted: z.boolean().optional(),
+  settings: ChunkingSettingsBaseSchema.partial().superRefine(chunkingSettingsRefinement).optional(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),
 });
@@ -36,7 +38,8 @@ export const UpdateResourceSchema = ResourceSchema.pick({
   title: true,
   description: true,
   refreshedAt: true,
-  isDeleted: true
+  isDeleted: true,
+  settings: true
 })
 
 export type UpdateResource = z.infer<typeof UpdateResourceSchema>;
