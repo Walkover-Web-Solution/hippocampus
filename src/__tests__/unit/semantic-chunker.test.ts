@@ -41,7 +41,7 @@ describe('SemanticChunker', () => {
             expect(result).toEqual(['This is a single sentence.']);
         });
 
-        it('should group semantically similar sentences together using sliding windows', async () => {
+        it('should group semantically similar sentences together', async () => {
             mockEncoder.encode.mockResolvedValue([
                 [1, 0, 0],
                 [0.95, 0.1, 0],
@@ -53,7 +53,7 @@ describe('SemanticChunker', () => {
                 denseModel: 'test-model',
                 similarityThreshold: 0.5,
                 minChunkSize: 10,
-                windowSize: 3,
+                bufferSize: 1,
             });
 
             const content = 'First sentence about cats. Second sentence about cats too. Third sentence about dogs. Fourth sentence about dogs too.';
@@ -243,7 +243,7 @@ describe('SemanticChunker', () => {
             expect(mockEncoder.encode).toHaveBeenCalled();
         });
 
-        it('should use sliding window to capture context around each sentence', async () => {
+        it('should use buffer to capture context around each sentence', async () => {
             mockEncoder.encode.mockResolvedValue([
                 [1, 0, 0],
                 [0.98, 0.02, 0],
@@ -256,10 +256,31 @@ describe('SemanticChunker', () => {
                 denseModel: 'test-model',
                 similarityThreshold: 0.5,
                 minChunkSize: 10,
-                windowSize: 3,
+                bufferSize: 1,
             });
 
             const content = 'Topic A first. Topic A second. Topic A third. Topic B first. Topic B second.';
+            const result = await chunker.chunk(content);
+
+            expect(mockEncoder.encode).toHaveBeenCalled();
+            expect(result.length).toBeGreaterThanOrEqual(1);
+        });
+
+        it('should split different topics using percentile-based breakpoints', async () => {
+            mockEncoder.encode.mockResolvedValue([
+                [1, 0, 0],
+                [0.1, 0.9, 0],
+                [0, 0, 1],
+            ]);
+
+            const chunker = new SemanticChunker({
+                denseModel: 'test-model',
+                similarityThreshold: 0.5,
+                minChunkSize: 10,
+                breakpointPercentile: 50,
+            });
+
+            const content = 'Space telescopes observe infrared light. The spice trade shaped history. Baseball uses advanced statistics.';
             const result = await chunker.chunk(content);
 
             expect(mockEncoder.encode).toHaveBeenCalled();

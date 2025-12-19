@@ -37,7 +37,7 @@ app.get('/', (req: Request, res: Response) => {
 
 app.post('/test/semantic-chunker', async (req: Request, res: Response, next) => {
     try {
-        const { content, denseModel, similarityThreshold, minChunkSize, maxChunkSize, windowSize } = req.body;
+        const { content, denseModel, similarityThreshold, minChunkSize, maxChunkSize, bufferSize, breakpointPercentile } = req.body;
 
         if (!content || typeof content !== 'string') {
             return res.status(400).json({ error: 'content is required and must be a string' });
@@ -55,8 +55,12 @@ app.post('/test/semantic-chunker', async (req: Request, res: Response, next) => 
             return res.status(400).json({ error: 'maxChunkSize must be a number' });
         }
 
-        if (windowSize !== undefined && typeof windowSize !== 'number') {
-            return res.status(400).json({ error: 'windowSize must be a number' });
+        if (bufferSize !== undefined && typeof bufferSize !== 'number') {
+            return res.status(400).json({ error: 'bufferSize must be a number' });
+        }
+
+        if (breakpointPercentile !== undefined && typeof breakpointPercentile !== 'number') {
+            return res.status(400).json({ error: 'breakpointPercentile must be a number' });
         }
 
         const chunker = new SemanticChunker({
@@ -64,7 +68,8 @@ app.post('/test/semantic-chunker', async (req: Request, res: Response, next) => 
             similarityThreshold: similarityThreshold ?? 0.5,
             minChunkSize: minChunkSize ?? 50,
             maxChunkSize: maxChunkSize ?? 2000,
-            windowSize: windowSize ?? 3,
+            bufferSize: bufferSize ?? 1,
+            breakpointPercentile: breakpointPercentile ?? 95,
         });
 
         const chunks = await chunker.chunk(content);
