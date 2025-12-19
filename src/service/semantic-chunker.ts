@@ -43,22 +43,16 @@ export class SemanticChunker {
 
     private splitIntoSentences(content: string): string[] {
         const sentenceRegex = /[^.!?]*[.!?]+/g;
-        const matches = content.match(sentenceRegex);
-        
-        if (!matches || matches.length === 0) {
-            const trimmed = content.trim();
-            return trimmed.length > 0 ? [trimmed] : [];
-        }
-
         const sentences: string[] = [];
         let lastIndex = 0;
+        let match: RegExpExecArray | null;
 
-        for (const match of matches) {
-            const trimmed = match.trim();
+        while ((match = sentenceRegex.exec(content)) !== null) {
+            const trimmed = match[0].trim();
             if (trimmed.length > 0) {
                 sentences.push(trimmed);
             }
-            lastIndex = content.indexOf(match, lastIndex) + match.length;
+            lastIndex = match.index + match[0].length;
         }
 
         const remaining = content.substring(lastIndex).trim();
@@ -66,7 +60,12 @@ export class SemanticChunker {
             sentences.push(remaining);
         }
 
-        return sentences.filter(s => s.length > 0);
+        if (sentences.length === 0) {
+            const trimmed = content.trim();
+            return trimmed.length > 0 ? [trimmed] : [];
+        }
+
+        return sentences;
     }
 
     private cosineSimilarity(vecA: number[], vecB: number[]): number {
@@ -114,8 +113,10 @@ export class SemanticChunker {
         for (let i = 0; i < sentences.length; i++) {
             const sentence = sentences[i];
             const sentenceLength = sentence.length;
+            const spaceNeeded = currentChunk.length > 0 ? 1 : 0;
+            const newLength = currentLength + spaceNeeded + sentenceLength;
 
-            if (currentLength + sentenceLength > this.maxChunkSize && currentChunk.length > 0) {
+            if (newLength > this.maxChunkSize && currentChunk.length > 0) {
                 chunks.push(currentChunk.join(" "));
                 currentChunk = [sentence];
                 currentLength = sentenceLength;
@@ -126,7 +127,7 @@ export class SemanticChunker {
                 currentLength = 0;
             } else {
                 currentChunk.push(sentence);
-                currentLength += sentenceLength + 1;
+                currentLength = newLength;
             }
         }
 
