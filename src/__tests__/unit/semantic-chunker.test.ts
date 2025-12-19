@@ -174,5 +174,80 @@ describe('SemanticChunker', () => {
 
             expect(result.length).toBeGreaterThanOrEqual(1);
         });
+
+        it('should handle Chinese sentence endings', async () => {
+            mockEncoder.encode.mockResolvedValue([
+                [1, 0, 0],
+                [0.9, 0.1, 0],
+            ]);
+
+            const chunker = new SemanticChunker({
+                denseModel: 'test-model',
+                minChunkSize: 5,
+            });
+
+            const content = '这是第一句话。这是第二句话。';
+            const result = await chunker.chunk(content);
+
+            expect(result.length).toBeGreaterThanOrEqual(1);
+            expect(mockEncoder.encode).toHaveBeenCalled();
+        });
+
+        it('should handle Japanese sentence endings', async () => {
+            mockEncoder.encode.mockResolvedValue([
+                [1, 0, 0],
+                [0.9, 0.1, 0],
+            ]);
+
+            const chunker = new SemanticChunker({
+                denseModel: 'test-model',
+                minChunkSize: 5,
+            });
+
+            const content = 'これは最初の文です。これは2番目の文です。';
+            const result = await chunker.chunk(content);
+
+            expect(result.length).toBeGreaterThanOrEqual(1);
+            expect(mockEncoder.encode).toHaveBeenCalled();
+        });
+
+        it('should split code content by newlines', async () => {
+            mockEncoder.encode.mockResolvedValue([
+                [1, 0, 0],
+                [0.9, 0.1, 0],
+                [0.8, 0.2, 0],
+            ]);
+
+            const chunker = new SemanticChunker({
+                denseModel: 'test-model',
+                minChunkSize: 5,
+            });
+
+            const content = 'function hello() {\n  console.log("hello")\n}';
+            const result = await chunker.chunk(content);
+
+            expect(result.length).toBeGreaterThanOrEqual(1);
+            expect(mockEncoder.encode).toHaveBeenCalled();
+        });
+
+        it('should split long text without punctuation by word boundaries', async () => {
+            mockEncoder.encode.mockResolvedValue([
+                [1, 0, 0],
+                [0.9, 0.1, 0],
+                [0.8, 0.2, 0],
+            ]);
+
+            const chunker = new SemanticChunker({
+                denseModel: 'test-model',
+                maxChunkSize: 400,
+                minChunkSize: 10,
+            });
+
+            const content = 'This is a very long piece of text without any punctuation marks that should be split into multiple segments based on word boundaries to make semantic analysis possible for the chunking algorithm';
+            const result = await chunker.chunk(content);
+
+            expect(result.length).toBeGreaterThanOrEqual(1);
+            expect(mockEncoder.encode).toHaveBeenCalled();
+        });
     });
 });

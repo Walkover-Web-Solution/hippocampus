@@ -42,7 +42,21 @@ export class SemanticChunker {
     }
 
     private splitIntoSentences(content: string): string[] {
-        const sentenceRegex = /[^.!?]*[.!?]+/g;
+        const sentences = this.splitBySentenceEndings(content);
+        if (sentences.length > 1) {
+            return sentences;
+        }
+
+        const linesSplit = this.splitByNewlines(content);
+        if (linesSplit.length > 1) {
+            return linesSplit;
+        }
+
+        return this.splitByLength(content);
+    }
+
+    private splitBySentenceEndings(content: string): string[] {
+        const sentenceRegex = /[^.!?。！？؟]+[.!?。！？؟]+[\s]*/g;
         const sentences: string[] = [];
         let lastIndex = 0;
         let match: RegExpExecArray | null;
@@ -60,12 +74,46 @@ export class SemanticChunker {
             sentences.push(remaining);
         }
 
-        if (sentences.length === 0) {
-            const trimmed = content.trim();
-            return trimmed.length > 0 ? [trimmed] : [];
+        return sentences.filter(s => s.length > 0);
+    }
+
+    private splitByNewlines(content: string): string[] {
+        const lines = content.split(/\n+/);
+        return lines
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+    }
+
+    private splitByLength(content: string): string[] {
+        const trimmed = content.trim();
+        if (trimmed.length === 0) {
+            return [];
         }
 
-        return sentences;
+        const targetLength = Math.min(200, this.maxChunkSize / 4);
+        if (trimmed.length <= targetLength) {
+            return [trimmed];
+        }
+
+        const segments: string[] = [];
+        const words = trimmed.split(/\s+/);
+        let current = "";
+
+        for (const word of words) {
+            const testLength = current.length + (current.length > 0 ? 1 : 0) + word.length;
+            if (testLength > targetLength && current.length > 0) {
+                segments.push(current);
+                current = word;
+            } else {
+                current = current.length > 0 ? current + " " + word : word;
+            }
+        }
+
+        if (current.length > 0) {
+            segments.push(current);
+        }
+
+        return segments;
     }
 
     private cosineSimilarity(vecA: number[], vecB: number[]): number {
