@@ -12,6 +12,7 @@ import collectionRouter from './route/collection';
 import resourceRouter from './route/resource';
 import searchRouter from './route/search';
 import utilityRouter from './route/utility';
+import { SemanticChunker } from './service/semantic-chunker';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -32,6 +33,40 @@ app.get('/', (req: Request, res: Response) => {
         `Welcome to the future of SEARCH!<br/><br/>
         * Documentation: <a href="/doc">/doc</a> <br/>
         * Feedback: <a href="/feedback">/feedback</a>`);
+});
+
+app.post('/test/semantic-chunker', async (req: Request, res: Response, next) => {
+    try {
+        const { content, denseModel, similarityThreshold, minChunkSize, maxChunkSize } = req.body;
+
+        if (!content || typeof content !== 'string') {
+            return res.status(400).json({ error: 'content is required and must be a string' });
+        }
+
+        if (similarityThreshold !== undefined && typeof similarityThreshold !== 'number') {
+            return res.status(400).json({ error: 'similarityThreshold must be a number' });
+        }
+
+        if (minChunkSize !== undefined && typeof minChunkSize !== 'number') {
+            return res.status(400).json({ error: 'minChunkSize must be a number' });
+        }
+
+        if (maxChunkSize !== undefined && typeof maxChunkSize !== 'number') {
+            return res.status(400).json({ error: 'maxChunkSize must be a number' });
+        }
+
+        const chunker = new SemanticChunker({
+            denseModel: denseModel || 'BAAI/bge-small-en-v1.5',
+            similarityThreshold: similarityThreshold ?? 0.5,
+            minChunkSize: minChunkSize ?? 50,
+            maxChunkSize: maxChunkSize ?? 2000,
+        });
+
+        const chunks = await chunker.chunk(content);
+        res.json({ chunks, count: chunks.length });
+    } catch (error) {
+        next(error);
+    }
 });
 
 app.use('/collection', auth([AuthMethod.API_KEY]), collectionRouter);
