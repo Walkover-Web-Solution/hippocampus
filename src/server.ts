@@ -37,7 +37,7 @@ app.get('/', (req: Request, res: Response) => {
 
 app.post('/test/semantic-chunker', async (req: Request, res: Response, next) => {
     try {
-        const { content, denseModel, similarityThreshold, minChunkSize, maxChunkSize } = req.body;
+        const { content, denseModel, similarityThreshold, minChunkSize, maxChunkSize, windowSize } = req.body;
 
         if (!content || typeof content !== 'string') {
             return res.status(400).json({ error: 'content is required and must be a string' });
@@ -55,11 +55,16 @@ app.post('/test/semantic-chunker', async (req: Request, res: Response, next) => 
             return res.status(400).json({ error: 'maxChunkSize must be a number' });
         }
 
+        if (windowSize !== undefined && typeof windowSize !== 'number') {
+            return res.status(400).json({ error: 'windowSize must be a number' });
+        }
+
         const chunker = new SemanticChunker({
             denseModel: denseModel || 'BAAI/bge-small-en-v1.5',
             similarityThreshold: similarityThreshold ?? 0.5,
             minChunkSize: minChunkSize ?? 50,
             maxChunkSize: maxChunkSize ?? 2000,
+            windowSize: windowSize ?? 3,
         });
 
         const chunks = await chunker.chunk(content);

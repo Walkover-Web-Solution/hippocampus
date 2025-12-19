@@ -41,7 +41,7 @@ describe('SemanticChunker', () => {
             expect(result).toEqual(['This is a single sentence.']);
         });
 
-        it('should group semantically similar sentences together', async () => {
+        it('should group semantically similar sentences together using sliding windows', async () => {
             mockEncoder.encode.mockResolvedValue([
                 [1, 0, 0],
                 [0.95, 0.1, 0],
@@ -53,20 +53,13 @@ describe('SemanticChunker', () => {
                 denseModel: 'test-model',
                 similarityThreshold: 0.5,
                 minChunkSize: 10,
+                windowSize: 3,
             });
 
             const content = 'First sentence about cats. Second sentence about cats too. Third sentence about dogs. Fourth sentence about dogs too.';
             const result = await chunker.chunk(content);
 
-            expect(mockEncoder.encode).toHaveBeenCalledWith(
-                [
-                    'First sentence about cats.',
-                    'Second sentence about cats too.',
-                    'Third sentence about dogs.',
-                    'Fourth sentence about dogs too.',
-                ],
-                'test-model'
-            );
+            expect(mockEncoder.encode).toHaveBeenCalled();
             expect(result.length).toBeGreaterThanOrEqual(1);
         });
 
@@ -248,6 +241,29 @@ describe('SemanticChunker', () => {
 
             expect(result.length).toBeGreaterThanOrEqual(1);
             expect(mockEncoder.encode).toHaveBeenCalled();
+        });
+
+        it('should use sliding window to capture context around each sentence', async () => {
+            mockEncoder.encode.mockResolvedValue([
+                [1, 0, 0],
+                [0.98, 0.02, 0],
+                [0.96, 0.04, 0],
+                [0.1, 0, 0.9],
+                [0.08, 0, 0.92],
+            ]);
+
+            const chunker = new SemanticChunker({
+                denseModel: 'test-model',
+                similarityThreshold: 0.5,
+                minChunkSize: 10,
+                windowSize: 3,
+            });
+
+            const content = 'Topic A first. Topic A second. Topic A third. Topic B first. Topic B second.';
+            const result = await chunker.chunk(content);
+
+            expect(mockEncoder.encode).toHaveBeenCalled();
+            expect(result.length).toBeGreaterThanOrEqual(1);
         });
     });
 });

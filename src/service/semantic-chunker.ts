@@ -5,6 +5,7 @@ interface SemanticChunkerOptions {
     similarityThreshold?: number;
     minChunkSize?: number;
     maxChunkSize?: number;
+    windowSize?: number;
 }
 
 export class SemanticChunker {
@@ -13,6 +14,7 @@ export class SemanticChunker {
     private similarityThreshold: number;
     private minChunkSize: number;
     private maxChunkSize: number;
+    private windowSize: number;
 
     constructor(options: SemanticChunkerOptions) {
         this.encoder = new Encoder();
@@ -20,6 +22,8 @@ export class SemanticChunker {
         this.similarityThreshold = options.similarityThreshold ?? 0.5;
         this.minChunkSize = options.minChunkSize ?? 50;
         this.maxChunkSize = options.maxChunkSize ?? 2000;
+        const windowSize = options.windowSize ?? 3;
+        this.windowSize = Math.max(1, Math.floor(windowSize));
     }
 
     async chunk(content: string): Promise<string[]> {
@@ -36,9 +40,24 @@ export class SemanticChunker {
             return sentences;
         }
 
-        const embeddings = await this.encoder.encode(sentences, this.denseModel);
-        const breakpoints = this.findBreakpoints(embeddings);
+        const windowTexts = this.createSlidingWindows(sentences);
+        const windowEmbeddings = await this.encoder.encode(windowTexts, this.denseModel);
+        const breakpoints = this.findBreakpointsWithWindows(windowEmbeddings, sentences.length);
         return this.groupSentencesIntoChunks(sentences, breakpoints);
+    }
+
+    private createSlidingWindows(sentences: string[]): string[] {
+        const windows: string[] = [];
+        const halfWindow = Math.floor(this.windowSize / 2);
+
+        for (let i = 0; i < sentences.length; i++) {
+            const start = Math.max(0, i - halfWindow);
+            const end = Math.min(sentences.length, i + halfWindow + 1);
+            const windowText = sentences.slice(start, end).join(" ");
+            windows.push(windowText);
+        }
+
+        return windows;
     }
 
     private splitIntoSentences(content: string): string[] {
@@ -139,12 +158,39 @@ export class SemanticChunker {
         return dotProduct / denominator;
     }
 
-    private findBreakpoints(embeddings: number[][]): number[] {
+    private findBreakpointsWithWindows(windowEmbeddings: number[][], sentenceCount: number): number[] {
+        if (sentenceCount <= 1) {
+            return [];
+        }
+
+        const similarities: number[] = [];
+        for (let i = 0; i < windowEmbeddings.length - 1; i++) {
+            const similarity = this.cosineSimilarity(windowEmbeddings[i], windowEmbeddings[i + 1]);
+            similarities.push(similarity);
+        }
+
+        if (similarities.length === 0) {
+            return [];
+        }
+
         const breakpoints: number[] = [];
-        
-        for (let i = 0; i < embeddings.length - 1; i++) {
-            const similarity = this.cosineSimilarity(embeddings[i], embeddings[i + 1]);
-            if (similarity < this.similarityThreshold) {
+        const mean = similarities.reduce((a, b) => a + b, 0) / similarities.length;
+        const stdDev = Math.sqrt(
+            similarities.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / similarities.length
+        );
+
+        const dynamicThreshold = Math.max(
+            this.similarityThreshold,
+            mean - stdDev
+        );
+
+        for (let i = 0; i < similarities.length; i++) {
+            const isLocalMinimum = (
+                (i === 0 || similarities[i] <= similarities[i - 1]) &&
+                (i === similarities.length - 1 || similarities[i] <= similarities[i + 1])
+            );
+
+            if (similarities[i] < dynamicThreshold && isLocalMinimum) {
                 breakpoints.push(i);
             }
         }
