@@ -14,10 +14,19 @@ import _ from "lodash";
 import crypto from 'crypto';
 import { ChunkingStrategy, DEFAULT_CHUNKING_STRATEGY } from "../type/collection";
 import axios from "axios";
+import { SemanticChunker } from "./semantic-chunker";
 type Metadata = {
     collectionId: string;
     ownerId?: string;
     [key: string]: any;
+}
+
+type ChunkingSetting = {
+    size: number;
+    overlap: number;
+    strategy: ChunkingStrategy;
+    url?: string;
+    denseModel?: string;
 }
 
 export class Doc {
@@ -32,7 +41,7 @@ export class Doc {
         this.chunks = [];
     }
 
-    async chunk(setting: { size: number; overlap: number; strategy: ChunkingStrategy; url?: string; }): Promise<this> {
+    async chunk(setting: ChunkingSetting): Promise<this> {
         if (!this.content) throw new Error("Content is required for chunking");
         if (!this?.metadata?.collectionId) throw new Error("CollectionId is required for chunking");
         this.chunks = []
@@ -46,6 +55,17 @@ export class Doc {
                     chunkOverlap: setting.overlap,
                 });
                 splits = await textSplitter.splitDocuments([{ pageContent: this.content, metadata: {} }]);
+                break;
+            }
+            case "semantic": {
+                const denseModel = setting.denseModel || "BAAI/bge-small-en-v1.5";
+                const semanticChunker = new SemanticChunker({
+                    denseModel,
+                    minChunkSize: Math.max(50, Math.floor(setting.size * 0.1)),
+                    maxChunkSize: setting.size,
+                });
+                const chunks = await semanticChunker.chunk(this.content);
+                splits = chunks.map(chunk => ({ pageContent: chunk }));
                 break;
             }
             case "custom": {
