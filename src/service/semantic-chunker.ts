@@ -1,31 +1,23 @@
 import { Encoder } from "./encoder";
+import logger from "./logger";
 
 interface SemanticChunkerOptions {
     denseModel: string;
-    similarityThreshold?: number;
     minChunkSize?: number;
     maxChunkSize?: number;
-    bufferSize?: number;
-    breakpointPercentile?: number;
 }
 
 export class SemanticChunker {
     private encoder: Encoder;
     private denseModel: string;
-    private similarityThreshold: number;
     private minChunkSize: number;
     private maxChunkSize: number;
-    private bufferSize: number;
-    private breakpointPercentile: number;
 
     constructor(options: SemanticChunkerOptions) {
         this.encoder = new Encoder();
         this.denseModel = options.denseModel;
-        this.similarityThreshold = options.similarityThreshold ?? 0.5;
-        this.minChunkSize = options.minChunkSize ?? 50;
-        this.maxChunkSize = options.maxChunkSize ?? 2000;
-        this.bufferSize = Math.max(1, Math.floor(options.bufferSize ?? 1));
-        this.breakpointPercentile = Math.min(100, Math.max(0, options.breakpointPercentile ?? 95));
+        this.minChunkSize = options.minChunkSize || 50;
+        this.maxChunkSize = options.maxChunkSize || 2000;
     }
 
     async chunk(content: string): Promise<string[]> {
@@ -33,7 +25,7 @@ export class SemanticChunker {
             return [];
         }
 
-        const sentences = this.splitIntoSentences(content);
+        const sentences = await this.splitIntoSentences(content);
         if (sentences.length === 0) {
             return [];
         }
@@ -42,25 +34,10 @@ export class SemanticChunker {
             return sentences;
         }
 
-        const combinedSentences = this.combineSentencesWithBuffer(sentences);
-        const embeddings = await this.encoder.encode(combinedSentences, this.denseModel);
+        const embeddings = await this.encoder.encode(sentences, this.denseModel);
         const similarities = this.calculateSimilarities(embeddings);
-        const breakpoints = this.findBreakpoints(similarities);
+        const breakpoints = this.findBreakpoints(similarities, 20);
         return this.groupSentencesIntoChunks(sentences, breakpoints);
-    }
-
-    private combineSentencesWithBuffer(sentences: string[]): string[] {
-        if (this.bufferSize <= 0) {
-            return sentences;
-        }
-
-        const combined: string[] = [];
-        for (let i = 0; i < sentences.length; i++) {
-            const start = Math.max(0, i - this.bufferSize);
-            const end = Math.min(sentences.length, i + this.bufferSize + 1);
-            combined.push(sentences.slice(start, end).join(" "));
-        }
-        return combined;
     }
 
     private calculateSimilarities(embeddings: number[][]): number[] {
@@ -71,49 +48,60 @@ export class SemanticChunker {
         return similarities;
     }
 
-    private findBreakpoints(similarities: number[]): number[] {
+    private findBreakpoints(similarities: number[], percentile: number = 20, boundary: { upper: number, lower: number } = { upper: 90, lower: 40 }): number[] {
         if (similarities.length === 0) {
             return [];
         }
 
-        const distances = similarities.map(s => 1 - s);
-        const sortedDistances = [...distances].sort((a, b) => a - b);
-        const percentileIndex = Math.min(
-            Math.floor((this.breakpointPercentile / 100) * (sortedDistances.length - 1)),
-            sortedDistances.length - 1
-        );
-        const percentileThreshold = sortedDistances[percentileIndex];
+        // We sort a copy of the array to find the value at the bottom X%.
+        const sortedSims = [...similarities].sort((a, b) => a - b);
+        // Cut off index where the bottom X% lies - e.g., 20th percentile
+        const index = Math.floor(sortedSims.length * (percentile / 100));
 
+        // Ensure index is within bounds
+        const safeIndex = Math.min(Math.max(0, index), sortedSims.length - 1);
+
+        let determinedThreshold = sortedSims[safeIndex];
+        const upperBoundary = boundary.upper; // Don't split if similarity is above this percentile
+        const lowerBoundary = boundary.lower; // Always split if similarity is below this percentile
+        if (determinedThreshold * 100 > upperBoundary) {
+            determinedThreshold = Math.min(determinedThreshold, upperBoundary / 100);
+        } else if (determinedThreshold * 100 < lowerBoundary) {
+            determinedThreshold = Math.max(determinedThreshold, lowerBoundary / 100);
+        }
+
+        logger.debug(`Determined Breakpoint Threshold: ${determinedThreshold} (Percentile: ${percentile}%, Boundary: ${upperBoundary}%-${lowerBoundary}%)`);
+        // 3. Find the Indices (The Breakpoints)
         const breakpoints: number[] = [];
-        for (let i = 0; i < distances.length; i++) {
-            const isAbovePercentile = distances[i] >= percentileThreshold;
-            const isBelowSimilarityThreshold = similarities[i] < this.similarityThreshold;
-
-            const isLocalMaxDistance = (
-                (i === 0 || distances[i] >= distances[i - 1]) &&
-                (i === distances.length - 1 || distances[i] >= distances[i + 1])
-            );
-
-            if ((isAbovePercentile || isBelowSimilarityThreshold) && isLocalMaxDistance) {
-                breakpoints.push(i);
+        for (let i = 0; i < similarities.length; i++) {
+            // If similarity is lower than or equal to our calculated cutoff, it's a split.
+            if (similarities[i] <= determinedThreshold) {
+                breakpoints.push(i + 1);
             }
         }
 
         return breakpoints;
     }
 
-    private splitIntoSentences(content: string): string[] {
-        const sentences = this.splitBySentenceEndings(content);
-        if (sentences.length > 1) {
-            return sentences;
+    private async splitIntoSentences(content: string): Promise<string[]> {
+        if (typeof Intl !== 'undefined' && (Intl as any).Segmenter) {
+            const segmenter = new (Intl as any).Segmenter('en', { granularity: 'sentence' });
+            const segments = segmenter.segment(content);
+            const sentences: string[] = [];
+
+            for (const segment of segments) {
+                const clean = segment.segment.trim();
+                if (clean.length > 0) sentences.push(clean);
+            }
+
+            // Fallback to length split if a sentence is massive
+            return sentences.flatMap(s =>
+                s.length > this.maxChunkSize ? this.splitByLength(s) : [s]
+            );
         }
 
-        const linesSplit = this.splitByNewlines(content);
-        if (linesSplit.length > 1) {
-            return linesSplit;
-        }
-
-        return this.splitByLength(content);
+        // Fallback to your regex implementation if Segmenter fails
+        return this.splitBySentenceEndings(content);
     }
 
     private splitBySentenceEndings(content: string): string[] {
@@ -136,13 +124,6 @@ export class SemanticChunker {
         }
 
         return sentences.filter(s => s.length > 0);
-    }
-
-    private splitByNewlines(content: string): string[] {
-        const lines = content.split(/\n+/);
-        return lines
-            .map(line => line.trim())
-            .filter(line => line.length > 0);
     }
 
     private splitByLength(content: string): string[] {
@@ -209,30 +190,45 @@ export class SemanticChunker {
         for (let i = 0; i < sentences.length; i++) {
             const sentence = sentences[i];
             const sentenceLength = sentence.length;
-            const spaceNeeded = currentChunk.length > 0 ? 1 : 0;
-            const newLength = currentLength + spaceNeeded + sentenceLength;
 
-            if (newLength > this.maxChunkSize && currentChunk.length > 0) {
-                chunks.push(currentChunk.join(" "));
-                currentChunk = [sentence];
-                currentLength = sentenceLength;
-            } else if (breakpointSet.has(i) && currentLength >= this.minChunkSize) {
-                currentChunk.push(sentence);
+            // 1. Forced Split: Size Limit
+            if (currentChunk.length > 0 && (currentLength + 1 + sentenceLength) > this.maxChunkSize) {
                 chunks.push(currentChunk.join(" "));
                 currentChunk = [];
                 currentLength = 0;
-            } else {
-                currentChunk.push(sentence);
-                currentLength = newLength;
             }
+
+            // 2. Semantic Split: Breakpoint detected
+            if (breakpointSet.has(i) && currentChunk.length > 0) {
+                // Only break if the current chunk has enough meat (minChunkSize)
+                // If it's too small, we ignore the semantic break to avoid fragmentation.
+                if (currentLength >= this.minChunkSize) {
+                    chunks.push(currentChunk.join(" "));
+                    currentChunk = [];
+                    currentLength = 0;
+                }
+            }
+
+            // 3. Add sentence to the (potentially new) chunk
+            currentChunk.push(sentence);
+            currentLength += (currentChunk.length > 1 ? 1 : 0) + sentenceLength;
         }
 
+        // 4. Handle the final leftover chunk
         if (currentChunk.length > 0) {
-            const lastChunk = currentChunk.join(" ");
-            if (chunks.length > 0 && lastChunk.length < this.minChunkSize) {
-                chunks[chunks.length - 1] = chunks[chunks.length - 1] + " " + lastChunk;
+            const lastChunkContent = currentChunk.join(" ");
+
+            // Merge logic: If the last chunk is too small, glue it to the previous one
+            if (chunks.length > 0 && lastChunkContent.length < this.minChunkSize) {
+                // Check if merging violates maxChunkSize
+                const combined = chunks[chunks.length - 1] + " " + lastChunkContent;
+                if (combined.length <= this.maxChunkSize) {
+                    chunks[chunks.length - 1] = combined;
+                } else {
+                    chunks.push(lastChunkContent); // Keep it separate if merging makes it too big
+                }
             } else {
-                chunks.push(lastChunk);
+                chunks.push(lastChunkContent);
             }
         }
 
