@@ -5,9 +5,10 @@ import rabbitmq from "../config/rabbitmq";
 import producer from "../config/producer";
 import collectionService from "../service/collection";
 import { generateEmbedding, generateSparseEmbedding } from "../service/encoder/fast-embed";
-import { hybridSearch, insert, search } from "../service/qdrant";
+import { hybridSearch, insert, search, retrievePoints } from "../service/qdrant";
 import feedbackService from "../service/feedback";
 import { generateContentId } from "../service/utility";
+import adapterService from "../service/adapter";
 const FEEDBACK_QUEUE = "search-feedback";
 
 type Payload = {
@@ -67,6 +68,28 @@ async function processFeedback(message: any, channel: Channel) {
 
         }
         await feedbackService.addFeedback(feedbackId, chunkId, resourceId, action);
+        
+        // Train adapter layer on upvote feedback
+        // This trains the linear projection to bring query vectors closer to positive chunk vectors
+        if (action === "upvote") {
+            try {
+                // Retrieve the chunk vector from Qdrant
+                const chunkPoints = await retrievePoints(collectionId, [chunkId], "dense");
+                
+                if (chunkPoints.length > 0 && chunkPoints[0].vector) {
+                    const chunkVector = chunkPoints[0].vector;
+                    const queryVector = denseEmbedding[0];
+                    
+                    // Train the adapter to map query vector closer to chunk vector
+                    await adapterService.trainWithFeedback(collectionId, queryVector, chunkVector);
+                    console.log(`Adapter trained for collection ${collectionId} with feedback from query: "${userQuery.substring(0, 50)}..."`);
+                }
+            } catch (adapterError) {
+                // Log but don't fail the feedback processing if adapter training fails
+                console.error("Error training adapter:", adapterError);
+            }
+        }
+        
         channel.ack(message);
     } catch (error) {
         console.error("Error processing feedback:", error);

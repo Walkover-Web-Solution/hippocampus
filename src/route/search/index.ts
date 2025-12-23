@@ -7,6 +7,7 @@ import Collection from '../../service/collection'
 import { v4 as uuidv4 } from 'uuid';
 import redis from '../../config/redis';
 import feedbackService from '../../service/feedback';
+import adapterService from '../../service/adapter';
 
 const router = express.Router();
 const encoder = new Encoder();
@@ -30,6 +31,19 @@ router.post('/', async (req, res, next) => {
 
         const [denseEmbedding, sparseEmbedding] = await Promise.all([denseEmbeddingPromise, sparseEmbeddingPromise]);
 
+        // Apply adapter layer transformation to query vector if trained adapter exists
+        // This morphs the query vector to better match relevant chunk vectors based on feedback training
+        let transformedDenseEmbedding = denseEmbedding;
+        if (denseEmbedding.length > 0) {
+            try {
+                const transformedVector = await adapterService.transformQuery(collectionId, denseEmbedding[0]);
+                transformedDenseEmbedding = [transformedVector];
+            } catch (adapterError) {
+                // If adapter transformation fails, use original embedding
+                console.error('Adapter transformation failed, using original embedding:', adapterError);
+            }
+        }
+
         // Filter Logic: "ownerId" (default: "global")
         const filter = {
             must: [
@@ -43,7 +57,7 @@ router.post('/', async (req, res, next) => {
         };
         if (resourceId) filter.must.push({ key: "resourceId", match: { value: resourceId } });
 
-        let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, denseEmbedding[0], sparseEmbedding[0], 50, filter) : await search(collectionId, denseEmbedding[0], 50, filter);
+        let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, transformedDenseEmbedding[0], sparseEmbedding[0], 50, filter) : await search(collectionId, transformedDenseEmbedding[0], 50, filter);
 
         const lateInteractionEmbedding = await rerankerEmbeddingPromise;
 
@@ -86,7 +100,7 @@ router.post('/', async (req, res, next) => {
                 resultMap.set(item.id, item);
             }
             const colId = 'feedback_' + collectionId;
-            const feedback = await search(colId, denseEmbedding[0], 1, filter);
+            const feedback = await search(colId, transformedDenseEmbedding[0], 1, filter);
             console.log(feedback)
             if (feedback.length >= 1) {
                 const { id } = feedback[0];
