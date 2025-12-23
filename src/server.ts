@@ -12,7 +12,6 @@ import collectionRouter from './route/collection';
 import resourceRouter from './route/resource';
 import searchRouter from './route/search';
 import utilityRouter from './route/utility';
-import { Encoder } from './service/encoder';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -45,30 +44,6 @@ app.get('/doc', (req: Request, res: Response) => {
 
 app.get('/feedback', (req: Request, res: Response) => {
     res.send("Comming soon!");
-});
-
-app.post('/compare-similarity', async (req: Request, res: Response) => {
-    try {
-        const { sentence1, sentence2, model = 'text-embedding-3-small' } = req.body;
-        if (!sentence1 || !sentence2) {
-            return res.status(400).json({ error: 'Both sentence1 and sentence2 are required' });
-        }
-
-        const encoder = new Encoder();
-        const embeddings = await encoder.encode([sentence1, sentence2], model) as number[][];
-
-        const vecA = embeddings[0];
-        const vecB = embeddings[1];
-
-        const dotProduct = vecA.reduce((sum: number, a: number, i: number) => sum + a * vecB[i], 0);
-        const magnitudeA = Math.sqrt(vecA.reduce((sum: number, val: number) => sum + val * val, 0));
-        const magnitudeB = Math.sqrt(vecB.reduce((sum: number, val: number) => sum + val * val, 0));
-        const similarity = dotProduct / (magnitudeA * magnitudeB);
-
-        res.json({ similarity, model });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
 });
 
 app.use(errorHandler as any);
