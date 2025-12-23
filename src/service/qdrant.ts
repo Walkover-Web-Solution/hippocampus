@@ -139,3 +139,28 @@ export async function deletePoints(collectionName: string, filter: any) {
         filter: filter
     });
 }
+
+/**
+ * Retrieve points by IDs with their vectors
+ * @param collectionName - Name of the collection
+ * @param ids - Array of point IDs to retrieve
+ * @param vectorName - Name of the vector to retrieve (default: "dense")
+ * @returns Array of points with their vectors
+ */
+export async function retrievePoints(
+    collectionName: string, 
+    ids: Array<string | number>,
+    vectorName: string = "dense"
+): Promise<Array<{ id: string | number; vector: number[] | null; payload?: Record<string, any> }>> {
+    const result = await qdrantClient.retrieve(collectionName, {
+        ids: ids,
+        with_payload: true,
+        with_vector: [vectorName]
+    });
+    
+    return result.map((point: any) => ({
+        id: point.id,
+        vector: point.vector?.[vectorName] || null,
+        payload: point.payload
+    }));
+}
