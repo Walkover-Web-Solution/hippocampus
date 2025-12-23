@@ -21,6 +21,14 @@ type Metadata = {
     [key: string]: any;
 }
 
+type ChunkingSetting = {
+    size: number;
+    overlap: number;
+    strategy: ChunkingStrategy;
+    url?: string;
+    denseModel?: string;
+}
+
 export class Doc {
     private content?: string;
     private resourceId: string;
@@ -33,7 +41,7 @@ export class Doc {
         this.chunks = [];
     }
 
-    async chunk(setting: { size: number; overlap: number; strategy: ChunkingStrategy; url?: string; denseModel?: string; }): Promise<this> {
+    async chunk(setting: ChunkingSetting): Promise<this> {
         if (!this.content) throw new Error("Content is required for chunking");
         if (!this?.metadata?.collectionId) throw new Error("CollectionId is required for chunking");
         this.chunks = []
