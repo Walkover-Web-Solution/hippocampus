@@ -12,7 +12,7 @@ import collectionRouter from './route/collection';
 import resourceRouter from './route/resource';
 import searchRouter from './route/search';
 import utilityRouter from './route/utility';
-import { SemanticChunker } from './service/semantic-chunker';
+import { Encoder } from './service/encoder';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -35,50 +35,6 @@ app.get('/', (req: Request, res: Response) => {
         * Feedback: <a href="/feedback">/feedback</a>`);
 });
 
-app.post('/test/semantic-chunker', async (req: Request, res: Response, next) => {
-    try {
-        const { content, denseModel, similarityThreshold, minChunkSize, maxChunkSize, bufferSize, breakpointPercentile } = req.body;
-
-        if (!content || typeof content !== 'string') {
-            return res.status(400).json({ error: 'content is required and must be a string' });
-        }
-
-        if (similarityThreshold !== undefined && typeof similarityThreshold !== 'number') {
-            return res.status(400).json({ error: 'similarityThreshold must be a number' });
-        }
-
-        if (minChunkSize !== undefined && typeof minChunkSize !== 'number') {
-            return res.status(400).json({ error: 'minChunkSize must be a number' });
-        }
-
-        if (maxChunkSize !== undefined && typeof maxChunkSize !== 'number') {
-            return res.status(400).json({ error: 'maxChunkSize must be a number' });
-        }
-
-        if (bufferSize !== undefined && typeof bufferSize !== 'number') {
-            return res.status(400).json({ error: 'bufferSize must be a number' });
-        }
-
-        if (breakpointPercentile !== undefined && typeof breakpointPercentile !== 'number') {
-            return res.status(400).json({ error: 'breakpointPercentile must be a number' });
-        }
-
-        const chunker = new SemanticChunker({
-            denseModel: denseModel || 'BAAI/bge-small-en-v1.5',
-            similarityThreshold: similarityThreshold ?? 0.5,
-            minChunkSize: minChunkSize ?? 50,
-            maxChunkSize: maxChunkSize ?? 2000,
-            bufferSize: bufferSize ?? 1,
-            breakpointPercentile: breakpointPercentile ?? 95,
-        });
-
-        const chunks = await chunker.chunk(content);
-        res.json({ chunks, count: chunks.length });
-    } catch (error) {
-        next(error);
-    }
-});
-
 app.use('/collection', auth([AuthMethod.API_KEY]), collectionRouter);
 app.use('/resource', auth([AuthMethod.API_KEY]), resourceRouter);
 app.use('/search', auth([AuthMethod.API_KEY]), searchRouter);
@@ -89,6 +45,30 @@ app.get('/doc', (req: Request, res: Response) => {
 
 app.get('/feedback', (req: Request, res: Response) => {
     res.send("Comming soon!");
+});
+
+app.post('/compare-similarity', async (req: Request, res: Response) => {
+    try {
+        const { sentence1, sentence2, model = 'text-embedding-3-small' } = req.body;
+        if (!sentence1 || !sentence2) {
+            return res.status(400).json({ error: 'Both sentence1 and sentence2 are required' });
+        }
+
+        const encoder = new Encoder();
+        const embeddings = await encoder.encode([sentence1, sentence2], model) as number[][];
+
+        const vecA = embeddings[0];
+        const vecB = embeddings[1];
+
+        const dotProduct = vecA.reduce((sum: number, a: number, i: number) => sum + a * vecB[i], 0);
+        const magnitudeA = Math.sqrt(vecA.reduce((sum: number, val: number) => sum + val * val, 0));
+        const magnitudeB = Math.sqrt(vecB.reduce((sum: number, val: number) => sum + val * val, 0));
+        const similarity = dotProduct / (magnitudeA * magnitudeB);
+
+        res.json({ similarity, model });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.use(errorHandler as any);
