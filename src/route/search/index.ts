@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import redis from '../../config/redis';
 import feedbackService from '../../service/feedback';
 import adapterService from '../../service/adapter';
+import logger from '../../service/logger';
 
 const router = express.Router();
 const encoder = new Encoder();
@@ -40,7 +41,7 @@ router.post('/', async (req, res, next) => {
                 transformedDenseEmbedding = [transformedVector];
             } catch (adapterError) {
                 // If adapter transformation fails, use original embedding
-                console.error('Adapter transformation failed, using original embedding:', adapterError);
+                logger.error(`Adapter transformation failed for collection ${collectionId}, using original embedding:`, adapterError);
             }
         }
 

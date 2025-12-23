@@ -9,6 +9,7 @@ import { hybridSearch, insert, search, retrievePoints } from "../service/qdrant"
 import feedbackService from "../service/feedback";
 import { generateContentId } from "../service/utility";
 import adapterService from "../service/adapter";
+import logger from "../service/logger";
 const FEEDBACK_QUEUE = "search-feedback";
 
 type Payload = {
@@ -82,11 +83,11 @@ async function processFeedback(message: any, channel: Channel) {
                     
                     // Train the adapter to map query vector closer to chunk vector
                     await adapterService.trainWithFeedback(collectionId, queryVector, chunkVector);
-                    console.log(`Adapter trained for collection ${collectionId} with feedback from query: "${userQuery.substring(0, 50)}..."`);
+                    logger.info(`Adapter trained for collection ${collectionId} with feedback from query: "${userQuery.substring(0, 50)}..."`);
                 }
             } catch (adapterError) {
                 // Log but don't fail the feedback processing if adapter training fails
-                console.error("Error training adapter:", adapterError);
+                logger.error("Error training adapter:", adapterError);
             }
         }
         
