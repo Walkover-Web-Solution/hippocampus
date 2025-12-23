@@ -1,5 +1,6 @@
 import * as tf from '@tensorflow/tfjs';
 import { Adapter, AdapterDocument } from '../models/adapter';
+import logger from './logger';
 
 /**
  * LinearProjectionAdapter - Adapter layer that transforms query vectors
@@ -29,13 +30,19 @@ export class LinearProjectionAdapter {
         const identityWeights = tf.eye(this.inputDim);
         const zeroBias = tf.zeros([this.inputDim]);
 
-        this.model.add(tf.layers.dense({
-            units: this.inputDim,
-            inputShape: [this.inputDim],
-            useBias: true,
-            weights: [identityWeights, zeroBias],
-            trainable: true
-        }));
+        try {
+            this.model.add(tf.layers.dense({
+                units: this.inputDim,
+                inputShape: [this.inputDim],
+                useBias: true,
+                weights: [identityWeights, zeroBias],
+                trainable: true
+            }));
+        } finally {
+            // Dispose tensors to prevent memory leaks
+            identityWeights.dispose();
+            zeroBias.dispose();
+        }
 
         // Compile with MSE loss and Adam optimizer
         this.model.compile({
@@ -59,13 +66,19 @@ export class LinearProjectionAdapter {
                 ? tf.tensor1d(adapterDoc.bias) 
                 : tf.zeros([this.inputDim]);
 
-            this.model.add(tf.layers.dense({
-                units: adapterDoc.outputDim,
-                inputShape: [adapterDoc.inputDim],
-                useBias: true,
-                weights: [weights, bias],
-                trainable: true
-            }));
+            try {
+                this.model.add(tf.layers.dense({
+                    units: adapterDoc.outputDim,
+                    inputShape: [adapterDoc.inputDim],
+                    useBias: true,
+                    weights: [weights, bias],
+                    trainable: true
+                }));
+            } finally {
+                // Dispose tensors to prevent memory leaks
+                weights.dispose();
+                bias.dispose();
+            }
 
             this.model.compile({
                 optimizer: tf.train.adam(0.001),
@@ -196,15 +209,13 @@ class AdapterService {
      * Get or create an adapter for a collection
      */
     async getAdapter(collectionId: string, inputDim: number): Promise<LinearProjectionAdapter> {
-        const key = collectionId;
-        
-        if (!this.adapters.has(key)) {
+        if (!this.adapters.has(collectionId)) {
             const adapter = new LinearProjectionAdapter(collectionId, inputDim);
             await adapter.loadOrInitialize();
-            this.adapters.set(key, adapter);
+            this.adapters.set(collectionId, adapter);
         }
         
-        return this.adapters.get(key)!;
+        return this.adapters.get(collectionId)!;
     }
 
     /**
@@ -240,7 +251,7 @@ class AdapterService {
             const adapter = await this.getAdapter(collectionId, queryVector.length);
             return await adapter.transform(queryVector);
         } catch (error) {
-            console.error('Error transforming query with adapter:', error);
+            logger.error('Error transforming query with adapter:', error);
             // Fallback to original vector on error
             return queryVector;
         }
