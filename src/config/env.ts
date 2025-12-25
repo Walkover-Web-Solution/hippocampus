@@ -35,6 +35,9 @@ const env = {
     QDRANT_URL: process.env.QDRANT_URL,
     QDRANT_API_KEY: process.env.QDRANT_API_KEY,
     QDRANT_COLLECTION_NAME: process.env.QDRANT_COLLECTION_NAME,
+    // Adapter Config
+    ADAPTER_USE_MONGO: process.env.ADAPTER_USE_MONGO === 'true', // Default: false (use local file storage)
+    ADAPTER_STORAGE_PATH: process.env.ADAPTER_STORAGE_PATH || './adapter_models',
 }
 
 export default env;
