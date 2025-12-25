@@ -159,7 +159,7 @@ export class LinearProjectionAdapter {
         const weights = tf.tensor2d(data.weights);
         const bias = data.bias && data.bias.length > 0
             ? tf.tensor1d(data.bias) 
-            : tf.zeros([this.inputDim]);
+            : tf.zeros([data.inputDim]);
 
         try {
             this.model.add(tf.layers.dense({
@@ -312,6 +312,13 @@ export class LinearProjectionAdapter {
 }
 
 /**
+ * Get the storage directory for adapter files
+ */
+function getStorageDir(): string {
+    return env.ADAPTER_STORAGE_PATH || './adapter_models';
+}
+
+/**
  * Check if adapter exists in storage
  */
 async function adapterExistsInStorage(collectionId: string): Promise<{ exists: boolean; trainingCount: number }> {
@@ -322,7 +329,7 @@ async function adapterExistsInStorage(collectionId: string): Promise<{ exists: b
             trainingCount: adapterDoc?.trainingCount || 0
         };
     } else {
-        const filePath = path.join(env.ADAPTER_STORAGE_PATH || './adapter_models', `${collectionId}.json`);
+        const filePath = path.join(getStorageDir(), `${collectionId}.json`);
         if (fs.existsSync(filePath)) {
             try {
                 const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -330,7 +337,8 @@ async function adapterExistsInStorage(collectionId: string): Promise<{ exists: b
                     exists: data.trainingCount > 0,
                     trainingCount: data.trainingCount || 0
                 };
-            } catch {
+            } catch (error) {
+                logger.error(`Error reading adapter file for existence check: ${filePath}`, error);
                 return { exists: false, trainingCount: 0 };
             }
         }
