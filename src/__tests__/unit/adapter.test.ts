@@ -1,10 +1,19 @@
 // src/__tests__/unit/adapter.test.ts
 
 import * as tf from '@tensorflow/tfjs';
+import * as fs from 'fs';
+import * as path from 'path';
 import { LinearProjectionAdapter } from '../../service/adapter';
 import { Adapter } from '../../models/adapter';
 
 jest.mock('../../models/adapter');
+jest.mock('fs');
+jest.mock('../../config/env', () => ({
+    default: {
+        ADAPTER_USE_MONGO: false,
+        ADAPTER_STORAGE_PATH: './test_adapter_models'
+    }
+}));
 
 describe('LinearProjectionAdapter Unit Tests', () => {
     const mockCollectionId = 'test-collection-123';
@@ -14,6 +23,9 @@ describe('LinearProjectionAdapter Unit Tests', () => {
         jest.clearAllMocks();
         // Set TensorFlow backend to CPU for testing
         tf.setBackend('cpu');
+        
+        // Mock fs.existsSync to return false by default (no existing file)
+        (fs.existsSync as jest.Mock).mockReturnValue(false);
     });
 
     afterEach(() => {
@@ -23,7 +35,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
 
     describe('initialization', () => {
         it('should initialize with identity matrix when no existing adapter', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
@@ -41,7 +53,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
             adapter.dispose();
         });
 
-        it('should load existing weights from database', async () => {
+        it('should load existing weights from file', async () => {
             // Create a weight matrix that doubles the first element
             const mockWeights = [
                 [2.0, 0.0, 0.0],
@@ -49,15 +61,16 @@ describe('LinearProjectionAdapter Unit Tests', () => {
                 [0.0, 0.0, 1.0]
             ];
             const mockBias = [0.0, 0.0, 0.0];
-
-            (Adapter.findById as jest.Mock).mockResolvedValue({
-                _id: mockCollectionId,
+            const mockData = {
                 weights: mockWeights,
                 bias: mockBias,
                 inputDim: inputDim,
                 outputDim: inputDim,
                 trainingCount: 5
-            });
+            };
+
+            (fs.existsSync as jest.Mock).mockReturnValue(true);
+            (fs.readFileSync as jest.Mock).mockReturnValue(JSON.stringify(mockData));
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
@@ -77,7 +90,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
 
     describe('transform', () => {
         it('should throw error if vector dimension mismatch', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
@@ -92,7 +105,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
         });
 
         it('should return transformed vector', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
@@ -109,7 +122,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
 
     describe('train', () => {
         it('should train model to move query toward chunk', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
@@ -144,7 +157,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
         });
 
         it('should increment training count', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
@@ -161,7 +174,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
         });
 
         it('should throw error if vector dimensions mismatch', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
@@ -178,26 +191,20 @@ describe('LinearProjectionAdapter Unit Tests', () => {
     });
 
     describe('save', () => {
-        it('should save weights to database', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
-            (Adapter.findByIdAndUpdate as jest.Mock).mockResolvedValue({});
+        it('should save weights to file', async () => {
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
+            (fs.mkdirSync as jest.Mock).mockReturnValue(undefined);
+            (fs.writeFileSync as jest.Mock).mockReturnValue(undefined);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
 
             await adapter.save();
 
-            expect(Adapter.findByIdAndUpdate).toHaveBeenCalledWith(
-                mockCollectionId,
-                expect.objectContaining({
-                    _id: mockCollectionId,
-                    weights: expect.any(Array),
-                    bias: expect.any(Array),
-                    inputDim: inputDim,
-                    outputDim: inputDim,
-                    trainingCount: 0
-                }),
-                { upsert: true, new: true }
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.stringContaining(`${mockCollectionId}.json`),
+                expect.any(String),
+                'utf-8'
             );
 
             adapter.dispose();
@@ -215,7 +222,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
 
     describe('dispose', () => {
         it('should dispose model without error', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
@@ -224,7 +231,7 @@ describe('LinearProjectionAdapter Unit Tests', () => {
         });
 
         it('should handle multiple dispose calls', async () => {
-            (Adapter.findById as jest.Mock).mockResolvedValue(null);
+            (fs.existsSync as jest.Mock).mockReturnValue(false);
 
             const adapter = new LinearProjectionAdapter(mockCollectionId, inputDim);
             await adapter.loadOrInitialize();
