@@ -1,5 +1,39 @@
 import { Schema, model } from 'mongoose';
+import { EvalTestCase as EvalTestCaseType } from '../type/eval';
 import { EvalRun as EvalRunType } from '../type/eval';
+import { EvalDataset as EvalDatasetType } from '../type/eval';
+
+const evalTestCaseSchema = new Schema(
+    {
+        collectionId: {
+            type: Schema.Types.ObjectId,
+            ref: 'Collection',
+            required: true
+        },
+        ownerId: {
+            type: String,
+            required: true,
+            default: "public"
+        },
+        query: {
+            type: String,
+            required: true
+        },
+        expectedChunkIds: {
+            type: [String],
+            required: true
+        }
+    },
+    {
+        timestamps: true,
+        versionKey: false
+    }
+);
+
+// Index for efficient lookup by datasetId
+evalTestCaseSchema.index({ collectionId: 1 });
+
+export const EvalTestCase = model<EvalTestCaseType>('EvalTestCase', evalTestCaseSchema);
 
 const evalResultSchema = new Schema(
     {
@@ -41,9 +75,9 @@ const evalResultSchema = new Schema(
 
 const evalRunSchema = new Schema(
     {
-        datasetId: {
+        collectionId: {
             type: Schema.Types.ObjectId,
-            ref: 'EvalDataset',
+            ref: 'Collection',
             required: true
         },
         timestamp: {
@@ -83,6 +117,8 @@ const evalRunSchema = new Schema(
 );
 
 // Index for efficient lookup by datasetId
-evalRunSchema.index({ datasetId: 1 });
+evalRunSchema.index({ collectionId: 1 });
 
 export const EvalRun = model<EvalRunType>('EvalRun', evalRunSchema);
+
+

@@ -1,20 +1,20 @@
 import { ApiError } from '../error/api-error';
-import { EvalDataset } from '../models/eval-dataset';
-import { EvalTestCase } from '../models/eval-test-case';
-import { EvalRun } from '../models/eval-run';
-import { 
-    CreateEvalDataset, 
-    CreateEvalTestCase, 
+import { EvalTestCase } from '../models/eval';
+import { EvalRun } from '../models/eval';
+import { retrive } from '../route/search';
+import {
+    CreateEvalDataset,
+    CreateEvalTestCase,
     EvalDataset as EvalDatasetType,
     EvalTestCase as EvalTestCaseType,
     EvalResult,
     EvalReport
 } from '../type/eval';
-import { 
-    mockSearchHippocampus, 
-    calculateHit, 
-    calculateRecall, 
-    calculateReciprocalRank 
+import {
+    mockSearchHippocampus,
+    calculateHit,
+    calculateRecall,
+    calculateReciprocalRank
 } from './eval-metrics';
 import logger from './logger';
 
@@ -34,32 +34,12 @@ const getDocumentId = (doc: { _id?: unknown }): string => {
     return '';
 };
 
-/**
- * Create a new evaluation dataset
- */
-const createDataset = async (data: CreateEvalDataset): Promise<EvalDatasetType> => {
-    const dataset = new EvalDataset(data);
-    return await dataset.save();
-};
 
-/**
- * Get a dataset by ID
- */
-const getDatasetById = async (id: string): Promise<EvalDatasetType> => {
-    const dataset = await EvalDataset.findById(id);
-    if (!dataset) {
-        throw new ApiError(`Dataset with ID ${id} not found`, 404);
-    }
-    return dataset;
-};
 
 /**
  * Create a new test case for a dataset
  */
 const createTestCase = async (data: CreateEvalTestCase): Promise<EvalTestCaseType> => {
-    // Verify the dataset exists
-    await getDatasetById(data.datasetId);
-    
     const testCase = new EvalTestCase(data);
     return await testCase.save();
 };
@@ -67,8 +47,8 @@ const createTestCase = async (data: CreateEvalTestCase): Promise<EvalTestCaseTyp
 /**
  * Get all test cases for a dataset
  */
-const getTestCasesByDatasetId = async (datasetId: string): Promise<EvalTestCaseType[]> => {
-    return await EvalTestCase.find({ datasetId });
+const getTestCasesByCollectionId = async (collectionId: string, ownerId: string = "public"): Promise<EvalTestCaseType[]> => {
+    return await EvalTestCase.find({ collectionId, ownerId });
 };
 
 /**
@@ -79,18 +59,16 @@ const getTestCasesByDatasetId = async (datasetId: string): Promise<EvalTestCaseT
  * 3. Calculates metrics (Hit, Recall@5, RR)
  * 4. Aggregates results and saves the run
  */
-const runEvaluation = async (datasetId: string): Promise<EvalReport> => {
-    // Get dataset info - getDatasetById throws if not found
-    const dataset = await getDatasetById(datasetId);
+const runEvaluation = async (collectionId: string, ownerId: string = "public"): Promise<EvalReport> => {
 
     // Get all test cases for this dataset
-    const testCases = await getTestCasesByDatasetId(datasetId);
-    
+    const testCases = await getTestCasesByCollectionId(collectionId, ownerId);
+
     if (testCases.length === 0) {
-        throw new ApiError(`No test cases found for dataset ${datasetId}`, 400);
+        throw new ApiError(`No test cases found for collection ${collectionId} and ownerId ${ownerId}`, 400);
     }
 
-    logger.info(`Running evaluation for dataset ${datasetId} with ${testCases.length} test cases`);
+    logger.info(`Running evaluation for collection ${collectionId} with ${testCases.length} test cases`);
 
     const results: EvalResult[] = [];
     let totalRecall = 0;
@@ -101,13 +79,14 @@ const runEvaluation = async (datasetId: string): Promise<EvalReport> => {
     for (const testCase of testCases) {
         // Access _id from the mongoose document using type-safe helper
         const caseId = getDocumentId(testCase);
-        
+
         // Query the mock vector search
-        const retrievedChunkIds = mockSearchHippocampus(
-            testCase.query, 
-            testCase.expectedChunkIds, 
-            TOP_K
-        );
+        // const retrievedChunkIds = mockSearchHippocampus(
+        //     testCase.query,
+        //     testCase.expectedChunkIds,
+        //     TOP_K
+        // );
+        const retrievedChunkIds = (await retrive(testCase.query, collectionId, { ownerId: ownerId, topK: TOP_K })).map((result) => result.id as string);
 
         // Calculate metrics
         const isHit = calculateHit(testCase.expectedChunkIds, retrievedChunkIds);
@@ -138,7 +117,7 @@ const runEvaluation = async (datasetId: string): Promise<EvalReport> => {
 
     // Save the evaluation run
     const evalRun = new EvalRun({
-        datasetId,
+        datasetId: collectionId,
         timestamp: new Date(),
         overallScore,
         averageRecall,
@@ -166,8 +145,7 @@ const runEvaluation = async (datasetId: string): Promise<EvalReport> => {
 
     return {
         runId: getDocumentId(savedRun),
-        datasetId,
-        datasetName: dataset.name,
+        collectionId: collectionId,
         timestamp: savedRun.timestamp || new Date(),
         overallAccuracy: overallScore,
         mrr,
@@ -179,9 +157,7 @@ const runEvaluation = async (datasetId: string): Promise<EvalReport> => {
 };
 
 export default {
-    createDataset,
-    getDatasetById,
     createTestCase,
-    getTestCasesByDatasetId,
+    getTestCasesByCollectionId,
     runEvaluation,
 };

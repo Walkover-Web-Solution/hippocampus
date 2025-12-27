@@ -22,7 +22,7 @@ export type CreateEvalDataset = z.infer<typeof CreateEvalDatasetSchema>;
 // EvalTestCase Schema - A specific query and its expected answer
 export const EvalTestCaseSchema = z.object({
     _id: z.string().optional(),
-    datasetId: z.string().min(1, 'Dataset ID is required'),
+    collectionId: z.string().min(1, 'Dataset ID is required'),
     query: z.string().min(1, 'Query is required'),
     expectedChunkIds: z.array(z.string()).min(1, 'At least one expected chunk ID is required'),
     createdAt: z.date().optional(),
@@ -55,7 +55,7 @@ export type EvalResult = z.infer<typeof EvalResultSchema>;
 // EvalRun Schema - A record of a test execution
 export const EvalRunSchema = z.object({
     _id: z.string().optional(),
-    datasetId: z.string().min(1, 'Dataset ID is required'),
+    collectionId: z.string().min(1, 'Dataset ID is required'),
     timestamp: z.date().optional(),
     overallScore: z.number().min(0).max(1),
     averageRecall: z.number().min(0).max(1),
@@ -72,8 +72,7 @@ export type EvalRun = z.infer<typeof EvalRunSchema>;
 // Evaluation Report Response Schema
 export const EvalReportSchema = z.object({
     runId: z.string(),
-    datasetId: z.string(),
-    datasetName: z.string(),
+    collectionId: z.string(),
     timestamp: z.date(),
     overallAccuracy: z.number(),
     mrr: z.number(),
