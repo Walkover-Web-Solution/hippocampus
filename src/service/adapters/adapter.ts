@@ -1,9 +1,9 @@
-import * as tf from '@tensorflow/tfjs';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Adapter, AdapterDocument } from '../models/adapter';
-import logger from './logger';
-import env from '../config/env';
+import { Adapter, AdapterDocument } from '../../models/adapter';
+import logger from '../logger';
+import env from '../../config/env';
+import * as tf from '@tensorflow/tfjs-node';
 
 /**
  * Interface for adapter data stored in file or MongoDB
@@ -124,7 +124,7 @@ export class LinearProjectionAdapter {
      */
     private initializeModel(): void {
         this.model = tf.sequential();
-        
+
         // Create identity matrix as initial weights
         const identityWeights = tf.eye(this.inputDim);
         const zeroBias = tf.zeros([this.inputDim]);
@@ -137,6 +137,7 @@ export class LinearProjectionAdapter {
                 weights: [identityWeights, zeroBias],
                 trainable: true
             }));
+
         } finally {
             // Dispose tensors to prevent memory leaks
             identityWeights.dispose();
@@ -145,8 +146,9 @@ export class LinearProjectionAdapter {
 
         // Compile with MSE loss and Adam optimizer
         this.model.compile({
-            optimizer: tf.train.adam(0.001),
-            loss: 'meanSquaredError'
+            optimizer: tf.train.adam(0.0001),
+            loss: 'cosineProximity',
+            metrics: ['mse']
         });
     }
 
@@ -155,10 +157,10 @@ export class LinearProjectionAdapter {
      */
     private loadModelFromData(data: AdapterData): void {
         this.model = tf.sequential();
-        
+
         const weights = tf.tensor2d(data.weights);
         const bias = data.bias && data.bias.length > 0
-            ? tf.tensor1d(data.bias) 
+            ? tf.tensor1d(data.bias)
             : tf.zeros([data.inputDim]);
 
         try {
@@ -176,8 +178,9 @@ export class LinearProjectionAdapter {
         }
 
         this.model.compile({
-            optimizer: tf.train.adam(0.001),
-            loss: 'meanSquaredError'
+            optimizer: tf.train.adam(0.0001),
+            loss: 'cosineProximity',
+            metrics: ['mse']
         });
 
         this.inputDim = data.inputDim;
@@ -189,13 +192,13 @@ export class LinearProjectionAdapter {
      */
     async loadOrInitialize(): Promise<void> {
         let adapterData: AdapterData | null = null;
-        
+
         if (env.ADAPTER_USE_MONGO) {
             adapterData = await this.loadFromMongo();
         } else {
             adapterData = this.loadFromFile();
         }
-        
+
         if (adapterData) {
             this.loadModelFromData(adapterData);
         } else {
@@ -214,7 +217,7 @@ export class LinearProjectionAdapter {
 
         const layer = this.model.layers[0] as tf.layers.Layer;
         const weights = layer.getWeights();
-        
+
         if (weights.length < 2) {
             throw new Error('Model weights not properly initialized.');
         }
@@ -243,27 +246,41 @@ export class LinearProjectionAdapter {
      * @param chunkVector - The target chunk embedding vector
      * @param epochs - Number of training epochs (default: 1 for online learning)
      */
-    async train(queryVector: number[], chunkVector: number[], epochs: number = 1): Promise<void> {
+    async train(queryVector: number[][], chunkVector: number[][], epochs: number = 3): Promise<void> {
         if (!this.model) {
             await this.loadOrInitialize();
         }
 
-        if (queryVector.length !== this.inputDim || chunkVector.length !== this.inputDim) {
-            throw new Error(`Vector dimensions mismatch. Expected ${this.inputDim}, got query: ${queryVector.length}, chunk: ${chunkVector.length}`);
+        if (queryVector[0].length !== this.inputDim || chunkVector[0].length !== this.inputDim) {
+            throw new Error(`Vector dimensions mismatch. Expected ${this.inputDim}, got query: ${queryVector[0].length}, chunk: ${chunkVector[0].length}`);
         }
 
-        const queryTensor = tf.tensor2d([queryVector]);
-        const chunkTensor = tf.tensor2d([chunkVector]);
+        const queryTensor = tf.tensor2d(queryVector);
+        const chunkTensor = tf.tensor2d(chunkVector);
+        const normalizedQuery = tf.tidy(() => {
+            const norm = tf.norm(queryTensor, 'euclidean', 1); // Calculate length
+            const normColumn = norm.reshape([-1, 1]);
+            return queryTensor.div(normColumn); // Divide vector by length
+        });
 
+        const normalizedChunk = tf.tidy(() => {
+            const norm = tf.norm(chunkTensor, 'euclidean', 1, true);
+            const normColumn = norm.reshape([-1, 1]);
+            return chunkTensor.div(normColumn);
+        });
         try {
             await this.model!.fit(queryTensor, chunkTensor, {
                 epochs: epochs,
+                batchSize: Math.min(32, queryVector.length),
+                shuffle: true,
                 verbose: 0
             });
             this.trainingCount++;
         } finally {
             queryTensor.dispose();
             chunkTensor.dispose();
+            normalizedChunk.dispose();
+            normalizedQuery.dispose();
         }
     }
 
@@ -273,6 +290,7 @@ export class LinearProjectionAdapter {
      * @returns Transformed query vector
      */
     async transform(queryVector: number[]): Promise<number[]> {
+        const start = performance.now();
         if (!this.model) {
             await this.loadOrInitialize();
         }
@@ -281,16 +299,30 @@ export class LinearProjectionAdapter {
             throw new Error(`Vector dimension mismatch. Expected ${this.inputDim}, got ${queryVector.length}`);
         }
 
-        const queryTensor = tf.tensor2d([queryVector]);
-        
-        try {
-            const result = this.model!.predict(queryTensor) as tf.Tensor;
-            const transformed = await result.array() as number[][];
-            result.dispose();
-            return transformed[0];
-        } finally {
-            queryTensor.dispose();
-        }
+        // tf.tidy automatically disposes ALL tensors created inside this callback
+        // when the function finishes. This prevents memory leaks.
+        const transformedVector = tf.tidy(() => {
+            const queryTensor = tf.tensor2d([queryVector]);
+
+            // 1. Run Model
+            const rawResult = this.model!.predict(queryTensor) as tf.Tensor;
+
+            // 2. Calculate Norm (Length)
+            // 'euclidean', axis=1, keepDims=true
+            // Result shape: [1, 1] (Perfect for division)
+            const norm = tf.norm(rawResult, 'euclidean', 1, true);
+
+            // 3. Normalize (Vector / Length)
+            // We add 1e-12 to avoid division by zero if the vector is empty
+            const normalizedResult = rawResult.div(norm.add(tf.scalar(1e-12)));
+
+            // Extract values synchronously (fast for small single vectors)
+            // Array.from converts TypedArray to standard JS number[]
+            return Array.from(normalizedResult.dataSync());
+        });
+
+        console.log(`Adapter transform took ${(performance.now() - start).toFixed(2)} ms`);
+        return transformedVector;
     }
 
     /**
@@ -324,7 +356,7 @@ function getStorageDir(): string {
 async function adapterExistsInStorage(collectionId: string): Promise<{ exists: boolean; trainingCount: number }> {
     if (env.ADAPTER_USE_MONGO) {
         const adapterDoc = await Adapter.findById(collectionId);
-        return { 
+        return {
             exists: !!(adapterDoc && adapterDoc.trainingCount > 0),
             trainingCount: adapterDoc?.trainingCount || 0
         };
@@ -333,7 +365,7 @@ async function adapterExistsInStorage(collectionId: string): Promise<{ exists: b
         if (fs.existsSync(filePath)) {
             try {
                 const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-                return { 
+                return {
                     exists: data.trainingCount > 0,
                     trainingCount: data.trainingCount || 0
                 };
@@ -361,7 +393,7 @@ class AdapterService {
             await adapter.loadOrInitialize();
             this.adapters.set(collectionId, adapter);
         }
-        
+
         return this.adapters.get(collectionId)!;
     }
 
@@ -373,10 +405,10 @@ class AdapterService {
      */
     async trainWithFeedback(
         collectionId: string,
-        queryVector: number[],
-        chunkVector: number[]
+        queryVector: number[][],
+        chunkVector: number[][]
     ): Promise<void> {
-        const adapter = await this.getAdapter(collectionId, queryVector.length);
+        const adapter = await this.getAdapter(collectionId, queryVector[0].length);
         await adapter.train(queryVector, chunkVector);
         await adapter.save();
     }
@@ -394,7 +426,7 @@ class AdapterService {
                 // No trained adapter, return original vector
                 return queryVector;
             }
-            
+
             const adapter = await this.getAdapter(collectionId, queryVector.length);
             return await adapter.transform(queryVector);
         } catch (error) {
@@ -427,3 +459,73 @@ class AdapterService {
 const adapterService = new AdapterService();
 
 export default adapterService;
+
+
+interface TransformationAnalysis {
+    isModified: boolean;
+    similarity: number;   // 1.0 = Identical, 0.0 = Totally different
+    distance: number;     // Raw distance between points
+    isSafe: boolean;      // False if meaning drifted too far
+    message: string;      // Human readable status
+}
+
+/**
+ * Compares the original query vector vs the adapted vector.
+ * @param originalVec - The raw embedding from the base model
+ * @param transformedVec - The output from your Adapter
+ * @param safetyThreshold - Minimum similarity allowed (default 0.75)
+ */
+export function analyzeTransformation(
+    originalVec: number[],
+    transformedVec: number[],
+    safetyThreshold: number = 0.75
+): TransformationAnalysis {
+
+    return tf.tidy(() => {
+        const tOriginal = tf.tensor1d(originalVec);
+        const tTransformed = tf.tensor1d(transformedVec);
+
+        // 1. Check strict equality (Is Modified?)
+        // We use a small epsilon because floating point math is rarely exact 0
+        const rawDistance = tf.norm(tOriginal.sub(tTransformed)).dataSync()[0];
+        const isModified = rawDistance > 0.000001;
+
+        if (!isModified) {
+            return {
+                isModified: false,
+                similarity: 1.0,
+                distance: 0,
+                isSafe: true,
+                message: "No change detected."
+            };
+        }
+
+        // 2. Calculate Cosine Similarity (The "Meaning" Check)
+        // Normalize first to ensure dot product = cosine similarity
+        const normOrg = tOriginal.div(tOriginal.norm());
+        const normTrans = tTransformed.div(tTransformed.norm());
+
+        // Dot product of unit vectors = Cosine Similarity
+        // Range: 1.0 (Identical) to -1.0 (Opposite)
+        const similarity = normOrg.dot(normTrans).dataSync()[0];
+
+        // 3. Generate Safety Warning
+        let message = `Modified. Similarity: ${(similarity * 100).toFixed(1)}%`;
+        let isSafe = true;
+
+        if (similarity < safetyThreshold) {
+            isSafe = false;
+            message = `⚠️ CRITICAL DRIFT: Query meaning changed too much (${(similarity * 100).toFixed(1)}%). Original meaning may be lost.`;
+        } else if (similarity < 0.9) {
+            message = `Significant adaptation applied (${(similarity * 100).toFixed(1)}%).`;
+        }
+
+        return {
+            isModified,
+            similarity,
+            distance: rawDistance,
+            isSafe,
+            message
+        };
+    });
+}
