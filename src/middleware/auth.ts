@@ -35,7 +35,7 @@ export function auth(authMethods: AuthMethod[] = [AuthMethod.API_KEY]) {
         let done = false;
         while (methods.length > 0 && !done) {
             const method = methods.shift();
-            logger.info(`Authenticating with ${method}...`);
+            logger.debug(`Authenticating with ${method}...`);
             try {
                 switch (method) {
                     case 'token':

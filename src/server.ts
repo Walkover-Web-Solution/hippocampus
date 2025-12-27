@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
+import 'newrelic';
 import express, { Request, Response } from 'express';
 import { connectDB } from './models';
 import puppeteer from 'puppeteer-extra';

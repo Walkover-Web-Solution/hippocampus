@@ -19,7 +19,7 @@ module.exports = {
     args: "--consumer=storage",
     instances: 1,
     exec_mode: "fork",
-    max_memory_restart: "500M",
+    max_memory_restart: "2000M",
   },
   {
     name: "rag-consumer",
@@ -27,7 +27,7 @@ module.exports = {
     args: "--consumer=rag",
     instances: 1,
     exec_mode: "fork",
-    max_memory_restart: "500M",
+    max_memory_restart: "2000M",
   },
   {
     name: "embedding-server",

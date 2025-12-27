@@ -33,12 +33,12 @@ class RabbitMqProducer {
     }
     public async publishToQueue(queueName: string, payload: any) {
         try {
-            logger.info(`[PRODUCER] Preparing payload...`);
+            logger.debug(`[PRODUCER] Preparing payload...`);
             payload = (typeof payload === 'string') ? payload : JSON.stringify(payload);
             const payloadBuffer: Buffer = Buffer.from(payload);
-            logger.info(`[PRODUCER] Asserting '${queueName}' queue...`);
+            logger.debug(`[PRODUCER] Asserting '${queueName}' queue...`);
             await rabbitChannel.assertQueue(queueName, { durable: true });
-            logger.info(`[PRODUCER] Producing to '${queueName}' queue...`);
+            logger.debug(`[PRODUCER] Producing to '${queueName}' queue...`);
             rabbitChannel.sendToQueue(queueName, payloadBuffer);
         } catch (error: any) {
             console.error('[RabbitMqProducer] publishToQueue', error);
