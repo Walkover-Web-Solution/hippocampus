@@ -21,6 +21,20 @@ import logger from './logger';
 const TOP_K = 5;
 
 /**
+ * Helper to extract document ID as string from a mongoose document
+ * Mongoose documents have _id as ObjectId, which has a toString() method
+ */
+const getDocumentId = (doc: { _id?: unknown }): string => {
+    if (doc._id && typeof doc._id === 'object' && 'toString' in doc._id) {
+        return (doc._id as { toString(): string }).toString();
+    }
+    if (typeof doc._id === 'string') {
+        return doc._id;
+    }
+    return '';
+};
+
+/**
  * Create a new evaluation dataset
  */
 const createDataset = async (data: CreateEvalDataset): Promise<EvalDatasetType> => {
@@ -31,7 +45,7 @@ const createDataset = async (data: CreateEvalDataset): Promise<EvalDatasetType> 
 /**
  * Get a dataset by ID
  */
-const getDatasetById = async (id: string): Promise<EvalDatasetType | null> => {
+const getDatasetById = async (id: string): Promise<EvalDatasetType> => {
     const dataset = await EvalDataset.findById(id);
     if (!dataset) {
         throw new ApiError(`Dataset with ID ${id} not found`, 404);
@@ -66,11 +80,8 @@ const getTestCasesByDatasetId = async (datasetId: string): Promise<EvalTestCaseT
  * 4. Aggregates results and saves the run
  */
 const runEvaluation = async (datasetId: string): Promise<EvalReport> => {
-    // Get dataset info
+    // Get dataset info - getDatasetById throws if not found
     const dataset = await getDatasetById(datasetId);
-    if (!dataset) {
-        throw new ApiError(`Dataset with ID ${datasetId} not found`, 404);
-    }
 
     // Get all test cases for this dataset
     const testCases = await getTestCasesByDatasetId(datasetId);
@@ -88,7 +99,8 @@ const runEvaluation = async (datasetId: string): Promise<EvalReport> => {
 
     // Iterate and evaluate each test case
     for (const testCase of testCases) {
-        const caseId = (testCase as any)._id?.toString() || '';
+        // Access _id from the mongoose document using type-safe helper
+        const caseId = getDocumentId(testCase);
         
         // Query the mock vector search
         const retrievedChunkIds = mockSearchHippocampus(
@@ -153,7 +165,7 @@ const runEvaluation = async (datasetId: string): Promise<EvalReport> => {
     logger.info(`Evaluation complete: accuracy=${overallScore}, MRR=${mrr}, recall=${averageRecall}`);
 
     return {
-        runId: (savedRun as any)._id?.toString() || '',
+        runId: getDocumentId(savedRun),
         datasetId,
         datasetName: dataset.name,
         timestamp: savedRun.timestamp || new Date(),
