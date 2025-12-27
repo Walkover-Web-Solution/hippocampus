@@ -1,6 +1,6 @@
 import axios from "../../config/axios";
 import { IEncoder, ModelDetail } from "../utility";
-
+const EMBEDDING_SERVER = process.env.EMBEDDING_SERVER || 'http://127.0.0.1:8000';
 export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
     const batchSize = 10;
     const embeddings: number[][] = [];
@@ -8,7 +8,7 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
     for (let i = 0; i < texts.length; i += batchSize) {
         const batch = texts.slice(i, i + batchSize);
         try {
-            const response = await axios.post('http://127.0.0.1:8000/embed', {
+            const response = await axios.post(`${EMBEDDING_SERVER}/embed`, {
                 model: model,
                 texts: batch
             });
@@ -28,7 +28,7 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
     for (let i = 0; i < texts.length; i += batchSize) {
         const batch = texts.slice(i, i + batchSize);
         try {
-            const response = await axios.post('http://127.0.0.1:8000/sparse-embed', {
+            const response = await axios.post(`${EMBEDDING_SERVER}/sparse-embed`, {
                 model: model,
                 texts: batch
             });
@@ -55,7 +55,7 @@ export async function generateLateInteractionEmbedding(texts: string[], model: s
     for (let i = 0; i < texts.length; i += batchSize) {
         const batch = texts.slice(i, i + batchSize);
         try {
-            const response = await axios.post('http://127.0.0.1:8000/late-interaction-embed', {
+            const response = await axios.post(`${EMBEDDING_SERVER}/late-interaction-embed`, {
                 model: model,
                 texts: batch
             });

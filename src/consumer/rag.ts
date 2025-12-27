@@ -48,7 +48,8 @@ async function processMsg(message: any, channel: Channel) {
                     size: resourceSettings?.chunkSize || chunkSize || 512,
                     overlap: resourceSettings?.chunkOverlap || chunkOverlap || 50,
                     strategy: resourceSettings?.strategy || strategy || DEFAULT_CHUNKING_STRATEGY,
-                    url: resourceSettings?.chunkingUrl || chunkingUrl
+                    url: resourceSettings?.chunkingUrl || chunkingUrl,
+                    denseModel: denseModel
                 }
                 const chunkedDocument = await doc.chunk(chunkSetting);
                 await chunkedDocument.encode({
