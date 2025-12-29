@@ -260,16 +260,16 @@ export class LinearProjectionAdapter {
         const normalizedQuery = tf.tidy(() => {
             const norm = tf.norm(queryTensor, 'euclidean', 1); // Calculate length
             const normColumn = norm.reshape([-1, 1]);
-            return queryTensor.div(normColumn); // Divide vector by length
+            return queryTensor.div(normColumn.add(tf.scalar(1e-12)));
         });
 
         const normalizedChunk = tf.tidy(() => {
             const norm = tf.norm(chunkTensor, 'euclidean', 1, true);
             const normColumn = norm.reshape([-1, 1]);
-            return chunkTensor.div(normColumn);
+            return chunkTensor.div(normColumn.add(tf.scalar(1e-12)));
         });
         try {
-            await this.model!.fit(queryTensor, chunkTensor, {
+            await this.model!.fit(normalizedQuery, normalizedChunk, {
                 epochs: epochs,
                 batchSize: Math.min(32, queryVector.length),
                 shuffle: true,
