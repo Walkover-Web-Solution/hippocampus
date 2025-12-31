@@ -1,6 +1,6 @@
 import qdrantClient from "../config/qdrant";
 
-export async function search(collectionName: string, vector: number[], topK: number = 5, filter?: object) {
+export async function denseSearch(collectionName: string, vector: number[], topK: number = 5, filter?: object) {
     const query: any = {
         vector: {
             name: "dense",
