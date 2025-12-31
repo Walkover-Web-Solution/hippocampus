@@ -3,7 +3,6 @@ import { EvalTestCase } from '../models/eval';
 import { EvalRun } from '../models/eval';
 import { search } from '../service/search';
 import {
-    CreateEvalDataset,
     CreateEvalTestCase,
     EvalDataset as EvalDatasetType,
     EvalTestCase as EvalTestCaseType,
@@ -45,14 +44,6 @@ const getTestCasesByCollectionId = async (collectionId: string, ownerId: string 
     return await EvalTestCase.find({ collectionId, ownerId });
 };
 
-/**
- * Run evaluation for a dataset
- * This is the main scoring engine that:
- * 1. Fetches all test cases for the dataset
- * 2. Runs each query through the mock search
- * 3. Calculates metrics (Hit, Recall@5, RR)
- * 4. Aggregates results and saves the run
- */
 const runEvaluation = async (collectionId: string, ownerId: string = "public"): Promise<EvalReport> => {
 
     // Get all test cases for this dataset
@@ -74,12 +65,6 @@ const runEvaluation = async (collectionId: string, ownerId: string = "public"): 
         // Access _id from the mongoose document using type-safe helper
         const caseId = getDocumentId(testCase);
 
-        // Query the mock vector search
-        // const retrievedChunkIds = mockSearchHippocampus(
-        //     testCase.query,
-        //     testCase.expectedChunkIds,
-        //     TOP_K
-        // );
         const retrievedChunkIds = (await search(testCase.query, collectionId, { ownerId: ownerId, topK: TOP_K })).map((result) => result.id as string);
 
         // Calculate metrics
@@ -158,40 +143,6 @@ export default {
 };
 
 
-import { v4 as uuidv4 } from 'uuid';
-
-/**
- * Mock function to simulate vector database search.
- * Returns random IDs, but returns the correct ID if the query contains the word "test".
- * This allows verifying the evaluation logic works correctly.
- */
-export function mockSearchHippocampus(query: string, expectedIds: string[], topK: number = 5): string[] {
-    const results: string[] = [];
-
-    // If query contains "test", include one of the expected IDs at a random position
-    if (query.toLowerCase().includes('test') && expectedIds.length > 0) {
-        // Pick a random expected ID
-        const correctId = expectedIds[Math.floor(Math.random() * expectedIds.length)];
-        // Place it at a random position within the results
-        const correctPosition = Math.floor(Math.random() * topK);
-
-        for (let i = 0; i < topK; i++) {
-            if (i === correctPosition) {
-                results.push(correctId);
-            } else {
-                // Generate random UUID as a mock chunk ID
-                results.push(uuidv4());
-            }
-        }
-    } else {
-        // Generate all random IDs
-        for (let i = 0; i < topK; i++) {
-            results.push(uuidv4());
-        }
-    }
-
-    return results;
-}
 
 /**
  * Calculate if any expected chunk IDs appear in the retrieved results (Hit)
