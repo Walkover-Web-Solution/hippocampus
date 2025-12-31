@@ -17,10 +17,15 @@ export async function validateCustomChunkingUrl(url: string): Promise<boolean> {
             resourceId: "validation",
             collectionId: "validation",
             metadata: { type: "validation" }
-        }, { timeout: 60*1000 }); // 1 minute timeout
+        }, { timeout: 60 * 1000 }); // 1 minute timeout
 
-        if (response.data && Array.isArray(response.data.chunks) && response.data.chunks.every((c: any) => typeof c === 'string')) {
-            return true;
+        if (response.data && Array.isArray(response.data.chunks)) {
+            const isValid = response.data.chunks.every((chunk: { text: string, vectorSource?: string }) => {
+                if (typeof chunk != 'object') return false;
+                if (!chunk?.text) return false;
+                return true;
+            });
+            return isValid;
         }
         return false;
     } catch (error) {

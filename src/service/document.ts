@@ -81,9 +81,15 @@ export class Doc {
                     }, { timeout: 60 * 1000 }); // 1 minute timeout
 
                     if (response.data && Array.isArray(response.data.chunks)) {
-                        splits = response.data.chunks.map((chunkContent: string) => ({ pageContent: chunkContent }));
+                        splits = response.data.chunks.map((chunk: { text: string, vectorSource?: string }) => {
+                            if (typeof chunk !== 'object') throw new Error("Invalid response format from custom chunking service. Expected { chunks: { text: string, vectorSource?: string }[] }");
+                            return {
+                                pageContent: chunk.text,
+                                vectorSource: chunk.vectorSource
+                            };
+                        });
                     } else {
-                        throw new Error("Invalid response format from custom chunking service. Expected { chunks: string[] }");
+                        throw new Error("Invalid response format from custom chunking service. Expected { chunks: { text: string, vectorSource?: string }[] }");
                     }
 
                 } catch (error: any) {
@@ -106,6 +112,7 @@ export class Doc {
             this.chunks.push({
                 _id: uuidv4(),
                 data: split.pageContent,
+                vectorSource: split?.vectorSource,
                 resourceId: this.resourceId,
                 collectionId: this.metadata.collectionId,
                 ownerId: this.metadata.ownerId || "public",
@@ -115,7 +122,7 @@ export class Doc {
     }
 
     async encode({ denseModel, sparseModel, rerankerModel }: any): Promise<this> {
-        const chunkTexts = this.chunks.map((chunk) => chunk.data);
+        const chunkTexts = this.chunks.map((chunk) => chunk?.vectorSource || chunk.data);
         const encoder = new Encoder();
         const startTime = performance.now();
         const embeddings = {
@@ -220,9 +227,9 @@ export class QdrantStorage implements Storage {
                 sparse: chunk.sparseVector ? chunk.sparseVector : undefined,
                 rerank: chunk.rerankVector ? chunk.rerankVector : undefined,
             };
-
+            const content = chunk.data + chunk?.vectorSource;
             return {
-                id: this.generateContentId(chunk.data, chunk.collectionId, chunk.ownerId || "public") || chunk._id,
+                id: this.generateContentId(content, chunk.collectionId, chunk.ownerId || "public") || chunk._id,
                 vector: vector,
                 payload: {
                     resourceId: chunk.resourceId,
