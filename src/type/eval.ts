@@ -23,6 +23,7 @@ export type CreateEvalDataset = z.infer<typeof CreateEvalDatasetSchema>;
 export const EvalTestCaseSchema = z.object({
     _id: z.string().optional(),
     collectionId: z.string().min(1, 'Dataset ID is required'),
+    ownerId: z.string().default("public"),
     query: z.string().min(1, 'Query is required'),
     expectedChunkIds: z.array(z.string()).min(1, 'At least one expected chunk ID is required'),
     createdAt: z.date().optional(),

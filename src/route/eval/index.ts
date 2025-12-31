@@ -29,15 +29,15 @@ router.get('/cases/:collectionId/:ownerId', async (req, res, next) => {
     }
 });
 
-router.post('/run/:datasetId/:ownerId', async (req, res, next) => {
+router.post('/run/:collectionId/:ownerId', async (req, res, next) => {
     try {
-        const datasetId = req.params.datasetId;
+        const collectionId = req.params.collectionId;
         const ownerId = req.params.ownerId || "public";
-        if (!datasetId) {
+        if (!collectionId) {
             throw new ApiError('Dataset ID is required', 400);
         }
 
-        const report = await EvalService.runEvaluation(datasetId, ownerId);
+        const report = await EvalService.runEvaluation(collectionId, ownerId);
         res.json(report);
     } catch (error) {
         next(error);

@@ -111,7 +111,8 @@ const runEvaluation = async (collectionId: string, ownerId: string = "public"): 
 
     // Save the evaluation run
     const evalRun = new EvalRun({
-        datasetId: collectionId,
+        collectionId: collectionId,
+        ownerId: ownerId,
         timestamp: new Date(),
         overallScore,
         averageRecall,
