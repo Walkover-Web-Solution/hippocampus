@@ -12,6 +12,10 @@ const chunkSchema = new Schema(
             type: String,
             required: true
         },
+        vectorSource: {
+            type: String,
+            required: false
+        },
         resourceId: {
             type: Schema.Types.ObjectId,
             ref: 'Resource',

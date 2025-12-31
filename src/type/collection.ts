@@ -65,7 +65,7 @@ export const chunkingSettingsRefinement = async (data: any, ctx: z.RefinementCtx
     if (!isValid) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "chunkingUrl must return a valid JSON object with a 'chunks' array of strings. Payload sent: { content: 'Health check', ... }",
+        message: "chunkingUrl must return a valid JSON object with a 'chunks' array of { text: string, vectorSource?: string }. Payload sent: { content: 'Health check', ... }",
         path: ["chunkingUrl"]
       });
     }

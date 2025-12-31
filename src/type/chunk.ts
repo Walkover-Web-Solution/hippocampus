@@ -4,6 +4,7 @@ import { z } from 'zod';
 export const ChunkSchema = z.object({
   _id: z.string().optional(), // MongoDB ObjectId as string
   data: z.string(),
+  vectorSource: z.string().optional(),
   resourceId: z.string(), // MongoDB ObjectId as string
   collectionId: z.string(), // MongoDB ObjectId as string
   ownerId: z.string().default("public"),
