@@ -10,17 +10,16 @@ const router = express.Router();
 router.post('/', async (req, res, next) => {
     try {
         const { query, collectionId, ownerId, resourceId, isReview } = req.body;
-
+        const topK = isReview ? 20 : 5;
         if (!query) {
             throw new ApiError('"query" is required in the request body.', 400);
         }
         if (!collectionId) throw new ApiError('"collectionId" is required in the request body.', 400);
-        const result = await search(query, collectionId, { ownerId: ownerId, resourceId: resourceId, analytics: true });
-        const finalResults = result.slice(0, 5);
+        const result = await search(query, collectionId, { ownerId: ownerId, resourceId: resourceId, analytics: true, topK });
         if (isReview) {
             const baseUrl = `${req.protocol}://${req.get('host')}/feedback/vote`;
 
-            await Promise.all(finalResults.map(async (item: any) => {
+            await Promise.all(result.map(async (item: any) => {
                 const feedbackId = uuidv4();
                 const feedbackContext = {
                     query,
@@ -41,7 +40,7 @@ router.post('/', async (req, res, next) => {
         }
 
         // Return top 5 results
-        res.json({ result: finalResults.slice(0, 5) });
+        res.json({ result: result });
     } catch (error) {
         next(error);
     }

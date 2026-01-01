@@ -14,7 +14,7 @@ interface SearchOptions {
     resourceId?: string;
     ignoreReranker?: boolean;
     ignoreKeywordSearch?: boolean;
-    ignoreFeedback?: boolean;
+    useFeedback?: boolean;
     analytics?: boolean;
     topK?: number;
 }
@@ -22,7 +22,7 @@ interface SearchOptions {
 const encoder = new Encoder();
 
 export async function search(query: string, collectionId: string, options?: SearchOptions) {
-    options = { ownerId: "public", analytics: false, topK: 5, ignoreFeedback: true, ...options };
+    options = { ownerId: "public", analytics: false, topK: 5, useFeedback: false, ...options };
     const start = performance.now();
     const collection = await Collection.getCollectionById(collectionId);
     const denseModel = collection?.settings?.denseModel;
@@ -56,14 +56,14 @@ export async function search(query: string, collectionId: string, options?: Sear
         // Candidates
         const candidateIds = searchResult.map((item: any) => item.id);
         // Rerank
-        const rankedResults = await rerank(collectionId, lateInteractionEmbedding[0], candidateIds, 5);
+        const rankedResults = await rerank(collectionId, lateInteractionEmbedding[0], candidateIds, options.topK);
         // Reranked results
         searchResult = rankedResults;
     }
 
     // Integrate Human Feedback
     // TODO: Reduce response time of feedback integration by using caching and parallel/group/batch requests
-    if (!options.ignoreFeedback) {
+    if (options.useFeedback) {
         const searchResultMap = new Map(searchResult.map((result) => [result.id, result]));
         const feedbackCollectionId = 'feedback_' + collectionId;
         const similarQueriesWithFeedback = (await denseSearch(feedbackCollectionId, denseEmbedding[0], 5, filter).catch(error => [])).filter((fb) => fb.score > 0.85);
