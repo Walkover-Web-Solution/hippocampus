@@ -4,7 +4,7 @@ import env from "../config/env";
 import { Chunk } from "../type/chunk";
 import ChunkService from "../service/chunk";
 import mongoose from "mongoose";
-import { IEncoder } from "./utility";
+import { IEncoder, generateContentId } from "./utility";
 import { Encoder } from "./encoder";
 import { generateSparseEmbedding } from "./encoder/fast-embed";
 import { deletePoints, insert } from "./qdrant";
@@ -208,18 +208,6 @@ export class MongoStorage implements Storage {
 }
 
 export class QdrantStorage implements Storage {
-    private generateContentId(text: string, collectionId: string, ownerId: string) {
-        if (!text) return undefined;
-        const input = `${collectionId}:${ownerId}:${text}`;
-        const hash = crypto.createHash('md5').update(input).digest('hex');
-        return [
-            hash.substring(0, 8),
-            hash.substring(8, 12),
-            hash.substring(12, 16),
-            hash.substring(16, 20),
-            hash.substring(20, 32)
-        ].join('-');
-    }
     async save(chunks: Chunk[]) {
         const points = chunks.map((chunk) => {
             let vector: any = {
@@ -229,7 +217,7 @@ export class QdrantStorage implements Storage {
             };
             const content = chunk.data + chunk?.vectorSource;
             return {
-                id: this.generateContentId(content, chunk.collectionId, chunk.ownerId || "public") || chunk._id,
+                id: generateContentId(content, chunk.collectionId, chunk.ownerId || "public") || chunk._id,
                 vector: vector,
                 payload: {
                     resourceId: chunk.resourceId,

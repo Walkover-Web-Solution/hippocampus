@@ -9,6 +9,7 @@
     "rag-sync": "ts-node-dev src/job/index.ts --job=rag-sync",
     "rag-consumer": "ts-node-dev src/consumer/index.ts --consumer=rag",
     "storage-consumer": "ts-node-dev src/consumer/index.ts --consumer=storage",
+    "feedback-consumer": "ts-node-dev src/consumer/index.ts --consumer=feedback",
     "dev": "ts-node-dev src/server.ts",
     "test": "jest",
     "test:watch": "jest --watch"
