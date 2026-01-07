@@ -44,7 +44,8 @@ router.get('/:id/chunks', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
     try {
-        const validatedData = await ResourceSchema.pick({ "content": true, "title": true, "description": true, "settings": true }).parseAsync(req.body);
+        const validatedData = await ResourceSchema.pick({ "content": true, "title": true, "url": true, "description": true, "settings": true, refreshedAt: true }).parseAsync(req.body);
+        validatedData.refreshedAt = new Date();
         const resource: Resource | null = await ResourceService.updateResource(req.params.id, validatedData);
         if (!resource) {
             throw new ApiError('Resource not found', 404);
