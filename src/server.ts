@@ -17,7 +17,7 @@ import evalRouter from './route/eval';
 import feedbackRouter from './route/feedback';
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 4477;
 connectDB();
 puppeteer.use(StealthPlugin());
 app.use(cors({
@@ -29,12 +29,11 @@ app.use(bodyParser.json({ limit: '8mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+import { landingPageHtml } from './views/landing-page';
+
 // Define a route
 app.get('/', (req: Request, res: Response) => {
-    res.send(
-        `Welcome to the future of SEARCH!<br/><br/>
-        * Documentation: <a href="/doc">/doc</a> <br/>
-        * Feedback: <a href="/feedback">/feedback</a>`);
+    res.send(landingPageHtml);
 });
 
 app.use('/collection', auth([AuthMethod.API_KEY]), collectionRouter);
