@@ -9,13 +9,13 @@ const router = express.Router();
 
 router.post('/', async (req, res, next) => {
     try {
-        const { query, collectionId, ownerId, resourceId, isReview } = req.body;
-        const topK = isReview ? 20 : 5;
+        const { query, collectionId, ownerId, resourceId, isReview, limit, minScore } = req.body;
+        const topK = limit ? limit : 5;
         if (!query) {
             throw new ApiError('"query" is required in the request body.', 400);
         }
         if (!collectionId) throw new ApiError('"collectionId" is required in the request body.', 400);
-        const result = await search(query, collectionId, { ownerId: ownerId, resourceId: resourceId, analytics: true, topK });
+        const result = await search(query, collectionId, { ownerId: ownerId, resourceId: resourceId, analytics: true, topK: topK, minScore });
         if (isReview) {
             const baseUrl = `${req.protocol}://${req.get('host')}/feedback/vote`;
 

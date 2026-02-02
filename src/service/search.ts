@@ -17,6 +17,7 @@ interface SearchOptions {
     useFeedback?: boolean;
     analytics?: boolean;
     topK?: number;
+    minScore?: number
 }
 
 const encoder = new Encoder();
@@ -48,8 +49,8 @@ export async function search(query: string, collectionId: string, options?: Sear
     };
     if (options.resourceId) filter.must.push({ key: "resourceId", match: { value: options.resourceId } });
 
-    let searchResult = (sparseEmbedding) ? await hybridSearch(collectionId, denseEmbedding[0], sparseEmbedding[0], 50, filter) : await denseSearch(collectionId, denseEmbedding[0], 50, filter);
-
+    const vectorResult = (sparseEmbedding) ? await hybridSearch(collectionId, denseEmbedding[0], sparseEmbedding[0], 50, filter) : await denseSearch(collectionId, denseEmbedding[0], 50, filter);
+    let searchResult = vectorResult.filter((value) => value.score >= (options?.minScore || 0));
     const lateInteractionEmbedding = await rerankerEmbeddingPromise;
     // Reranking
     if (rerankerModel && lateInteractionEmbedding && searchResult.length > 0) {
@@ -87,9 +88,14 @@ export async function search(query: string, collectionId: string, options?: Sear
         collectionId: collectionId,
         ownerId: options.ownerId,
         query: query,
+        embedding: denseEmbedding[0],
+        result: {
+            scores: vectorResult.slice(0, options.topK).map((value) => value.score)
+        },
         rt: (performance.now() - start).toFixed(0),
         ts: (Date.now() / 1000).toFixed(0)
     };
-    if (options.analytics) producer.publishToQueue("analytics", analyticsData);
-    return searchResult;
+    // if (options.analytics) producer.publishToQueue("analytics", analyticsData);
+    if (options.analytics) producer.publishToQueue("testing-analytics", analyticsData);
+    return searchResult.slice(0, options.topK);
 }
