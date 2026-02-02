@@ -42,8 +42,7 @@ async function processMsg(message: any, channel: Channel) {
 
                 const resource = await ResourceService.getResourceById(data.resourceId);
                 const resourceSettings = resource?.settings;
-
-                const { denseModel, chunkOverlap, chunkSize, sparseModel, rerankerModel, strategy, chunkingUrl } = collection.settings;
+                const { denseModel, chunkOverlap, chunkSize, sparseModel, rerankerModel, strategy, chunkingUrl, keepDuplicate } = collection.settings;
                 const chunkSetting = {
                     size: resourceSettings?.chunkSize || chunkSize || 512,
                     overlap: resourceSettings?.chunkOverlap || chunkOverlap || 50,

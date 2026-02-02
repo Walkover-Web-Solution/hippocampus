@@ -50,6 +50,10 @@ const collectionSchema = new Schema(
                 chunkingUrl: {
                     type: String,
                     required: false
+                },
+                keepDuplicate: {
+                    type: Boolean,
+                    required: false
                 }
             },
             required: true,
