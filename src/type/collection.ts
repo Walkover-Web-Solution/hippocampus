@@ -77,12 +77,13 @@ export const ChunkingSettingsSchema = ChunkingSettingsBaseSchema.superRefine(chu
 export type ChunkingSettings = z.infer<typeof ChunkingSettingsSchema>;
 
 // Define the Zod schema for the settings sub-document
-export const CollectionSettingsSchema = ChunkingSettingsBaseSchema.extend({
+export const CollectionSettingsBaseSchema = ChunkingSettingsBaseSchema.extend({
   denseModel: EncoderSchema.default('BAAI/bge-small-en-v1.5'),
   sparseModel: SparseEncoderSchema.optional(),
   rerankerModel: RerankerSchema.optional(),
-}).superRefine(chunkingSettingsRefinement);
-
+  keepDuplicate: z.boolean().default(false)
+});
+export const CollectionSettingsSchema = CollectionSettingsBaseSchema.superRefine(chunkingSettingsRefinement);
 // Define the Zod schema for the Collection model
 export const CollectionSchema = z.object({
   _id: z.string().optional(), // MongoDB ObjectId as string

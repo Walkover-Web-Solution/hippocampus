@@ -1,6 +1,7 @@
 import { track } from "@amplitude/analytics-node";
 import { DateTime } from "luxon";
 import axios from "../config/axios";
+import { ChunkSchema } from "../type/chunk";
 
 export function delay(time = 1000) {
     return new Promise((resolve) => {
@@ -20,9 +21,12 @@ export async function validateCustomChunkingUrl(url: string): Promise<boolean> {
         }, { timeout: 60 * 1000 }); // 1 minute timeout
 
         if (response.data && Array.isArray(response.data.chunks)) {
-            const isValid = response.data.chunks.every((chunk: { text: string, vectorSource?: string }) => {
+            const isValid = response.data.chunks.every((chunk: { text: string, vectorSource?: string, metadata?: any }) => {
                 if (typeof chunk != 'object') return false;
                 if (!chunk?.text) return false;
+                if (chunk.metadata) {
+                    ChunkSchema.pick({ metadata: true }).optional().parse(chunk.metadata);
+                }
                 return true;
             });
             return isValid;
