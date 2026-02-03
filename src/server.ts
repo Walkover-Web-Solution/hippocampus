@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 import 'newrelic';
 import express, { Request, Response } from 'express';
-import { connectDB } from './models';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import cors from 'cors';
@@ -18,7 +17,6 @@ import feedbackRouter from './route/feedback';
 
 const app = express();
 const port = process.env.PORT || 4477;
-connectDB();
 puppeteer.use(StealthPlugin());
 app.use(cors({
     origin: "*",
