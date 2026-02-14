@@ -67,7 +67,7 @@
     "mongoose": "^8.8.2",
     "newrelic": "^13.8.0",
     "openai": "^4.76.1",
-    "pdf-parse": "^1.1.1",
+    "pdf-parse": "^2.4.5",
     "puppeteer": "^23.11.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
