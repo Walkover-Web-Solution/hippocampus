@@ -14,7 +14,7 @@ import searchRouter from './route/search';
 import utilityRouter from './route/utility';
 import evalRouter from './route/eval';
 import feedbackRouter from './route/feedback';
-
+import { connectDB } from './models';
 const app = express();
 const port = process.env.PORT || 4477;
 puppeteer.use(StealthPlugin());
@@ -29,6 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 
 import { landingPageHtml } from './views/landing-page';
 
+connectDB()
 // Define a route
 app.get('/', (req: Request, res: Response) => {
     res.send(landingPageHtml);
