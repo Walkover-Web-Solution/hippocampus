@@ -59,9 +59,9 @@ export async function search(query: string, collectionId: string, options?: Sear
         // Rerank
         const rankedResults = await rerank(collectionId, lateInteractionEmbedding[0], candidateIds, options.topK);
         // Reranked results
-        searchResult = rankedResults;
+        searchResult = rankedResults.map((result, index) => { return { ...result, score: vectorResult[index]?.score || result.score } });
     }
-
+    
     // Integrate Human Feedback
     // TODO: Reduce response time of feedback integration by using caching and parallel/group/batch requests
     if (options.useFeedback) {
