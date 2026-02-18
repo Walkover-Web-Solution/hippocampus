@@ -7,7 +7,9 @@ import rabbitmq from "../config/rabbitmq";
 import rag from './rag';
 import { mongoStoreConsumer, qdrantIndiaStoreConsumer } from "./storage";
 import { feedbackConsumer } from "./feedback";
+import { connectDB } from "../models";
 import { delay } from "../utility";
+connectDB();
 const CONSUMERS: IConsumer[] = [];
 console.log(args, "args");
 switch (args?.consumer) {
