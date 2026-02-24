@@ -1,0 +1,8 @@
+node_modules
+dist
+fastembed/venv
+fastembed/__pycache__
+.git
+.env
+.env.docker
+Dockerfile
