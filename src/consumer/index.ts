@@ -6,9 +6,11 @@ import logger from "../service/logger";
 import rabbitmq from "../config/rabbitmq";
 import rag from './rag';
 import { mongoStoreConsumer, qdrantIndiaStoreConsumer } from "./storage";
+import { analyticsConsumer } from "./analytics";
 import { feedbackConsumer } from "./feedback";
 import { connectDB } from "../models";
 import { delay } from "../utility";
+import { exit } from "process";
 connectDB();
 const CONSUMERS: IConsumer[] = [];
 console.log(args, "args");
@@ -22,6 +24,9 @@ switch (args?.consumer) {
     break;
   case "feedback":
     CONSUMERS.push(feedbackConsumer);
+    break;
+  case "analytics":
+    CONSUMERS.push(analyticsConsumer);
     break;
   default:
     break;
@@ -77,9 +82,11 @@ class Consumer {
       }
     }, { noAck: false });
     // Stop the consumer if an error occurs
-    this.channel?.on('error', (error: any) => {
+    this.channel?.on('error', async (error: any) => {
       this.stop();
       logger.error(error);
+      await delay(10000);
+      exit();
     });
   }
   public stop() {
