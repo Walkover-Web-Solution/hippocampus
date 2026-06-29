@@ -38,7 +38,7 @@ async function getSearchAnalytics(params: AnalyticsQuery): Promise<AnalyticsResu
         queryParams.collectionId = collectionId;
     }
 
-    if (ownerId && ownerId !== 'public') {
+    if (ownerId) {
         conditions.push('ownerId = @ownerId');
         queryParams.ownerId = ownerId;
     }

@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
                 startDate: validatedParams.startDate || null,
                 endDate: validatedParams.endDate || null,
                 collectionId: validatedParams.collectionId,
-                ownerId: validatedParams.ownerId,
+                ownerId: validatedParams.ownerId || null,
                 limit: validatedParams.limit,
             },
         });

@@ -12,7 +12,7 @@ export const AnalyticsQuerySchema = z.object({
     /** Filter by collection ID (maps to queryId prefix or collection context). */
     collectionId: z.string().min(1, 'collectionId must not be empty'),
     /** Filter by owner ID. */
-    ownerId: z.string().min(1, 'ownerId must not be empty').default('public'),
+    ownerId: z.string().min(1, 'ownerId must not be empty').optional(),
     /** Maximum number of grouped results to return. */
     limit: z.number().int().min(1).max(1000).default(500),
 }).refine(
