@@ -86,7 +86,7 @@ export async function search(query: string, collectionId: string, options?: Sear
     const analyticsData = {
         "id": uuidv4(),
         collectionId: collectionId,
-        ownerId: options.ownerId,
+        ownerId: options.ownerId || "public",
         query: query,
         embedding: denseEmbedding[0],
         result: {

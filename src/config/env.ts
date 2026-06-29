@@ -35,6 +35,13 @@ const env = {
     QDRANT_URL: process.env.QDRANT_URL,
     QDRANT_API_KEY: process.env.QDRANT_API_KEY,
     QDRANT_COLLECTION_NAME: process.env.QDRANT_COLLECTION_NAME,
+    // BigQuery
+    BQ_PROJECT_ID: process.env.BQ_PROJECT_ID,
+    BQ_PRIVATE_KEY: process.env.BQ_PRIVATE_KEY,
+    BQ_CLIENT_EMAIL: process.env.BQ_CLIENT_EMAIL,
+    BQ_CLIENT_ID: process.env.BQ_CLIENT_ID,
+    BQ_DATASET: process.env.BQ_DATASET || 'hippocampus',
+    BQ_TABLE: process.env.BQ_TABLE || 'analytics',
 }
 
 export default env;

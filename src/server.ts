@@ -14,6 +14,7 @@ import searchRouter from './route/search';
 import utilityRouter from './route/utility';
 import evalRouter from './route/eval';
 import feedbackRouter from './route/feedback';
+import analyticsRouter from './route/analytics';
 import { connectDB } from './models';
 const app = express();
 const port = process.env.PORT || 4477;
@@ -41,6 +42,7 @@ app.use('/search', auth([AuthMethod.API_KEY]), searchRouter);
 app.use('/utility', auth([AuthMethod.API_KEY]), utilityRouter);
 app.use('/eval', auth([AuthMethod.API_KEY]), evalRouter);
 app.use('/feedback', auth([AuthMethod.API_KEY]), feedbackRouter);
+app.use('/analytics', auth([AuthMethod.API_KEY]), analyticsRouter);
 app.get('/doc', (req: Request, res: Response) => {
     res.redirect('https://www.postman.com/cloudvulture/rag-service/collection/6unm4q7/api-documentation');
 });
