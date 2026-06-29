@@ -32,6 +32,22 @@ router.get('/:id/resources', async (req, res, next) => {
         next(error);
     }
 });
+router.delete('/:id/resources', async (req, res, next) => {
+    try {
+        const ownerId = req.query.ownerId as string;
+        const resources: Resource[] = await ResourceService.getResourcesByCollectionId(req.params.id, ownerId, false);
+        await Promise.all(resources.map((resource) => ResourceService.deleteResource(resource?._id?.toString() || "", true)));
+        res.json({
+            resources: resources,
+            metadata: {
+                total: resources.length
+            },
+            message: "Resource deleted"
+        });
+    } catch (error) {
+        next(error);
+    }
+});
 
 router.get('/:id', async (req, res, next) => {
     try {

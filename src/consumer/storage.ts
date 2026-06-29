@@ -81,11 +81,12 @@ async function qdrantIndiaStore(message: any, channel: Channel) {
         const action = msg.action;
         const collectionId = msg.collectionId;
         const resourceId = msg.resourceId;
+        const keepDuplicate = msg.keepDuplicate || false;
         switch (action) {
             case "save": {
                 const chunks: Chunk[] = msg.chunks;
                 const storage = new QdrantStorage();
-                await storage.save(chunks);
+                await storage.save(chunks, keepDuplicate);
                 break;
             }
             case "delete": {

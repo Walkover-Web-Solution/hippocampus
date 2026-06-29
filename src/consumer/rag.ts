@@ -56,7 +56,7 @@ async function processMsg(message: any, channel: Channel) {
                     sparseModel: sparseModel,
                     rerankerModel: rerankerModel
                 });
-                await chunkedDocument.store();
+                await chunkedDocument.store(keepDuplicate);
                 // await updateDescription(data?.resourceId, data?.content).catch(error => logger.error(error));
                 pipelineStatus = "chunked";
                 break;
