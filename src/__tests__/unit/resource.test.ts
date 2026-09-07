@@ -6,6 +6,11 @@ import { ApiError } from '../../error/api-error';
 
 // Mock the Resource model
 jest.mock('../../models/resource');
+jest.mock('../../config/producer', () => ({
+    __esModule: true,
+    default: { publishToQueue: jest.fn().mockResolvedValue(undefined) }
+}));
+const producer = require('../../config/producer').default;
 
 describe('ResourceService Unit Tests', () => {
     afterEach(() => {
@@ -128,6 +133,61 @@ describe('ResourceService Unit Tests', () => {
             
             expect(Resource.deleteOne).toHaveBeenCalledWith({ _id: 'res123' });
             expect(result).toEqual(mockDeletedResource);
+        });
+    });
+
+    describe('rechunkResource', () => {
+        const mockResource = {
+            _id: 'res123',
+            collectionId: 'col123',
+            ownerId: 'user123',
+            content: 'Some content',
+            isDeleted: false,
+            settings: { chunkSize: 500, chunkOverlap: 50, strategy: 'recursive' }
+        };
+
+        it('should publish a delete and a chunk event for the resource', async () => {
+            (Resource.findById as jest.Mock).mockResolvedValue(mockResource);
+            (Resource.findByIdAndUpdate as jest.Mock).mockResolvedValue(mockResource);
+
+            await ResourceService.rechunkResource('res123');
+
+            const events = producer.publishToQueue.mock.calls.map((call: any[]) => call[1].event);
+            expect(events).toEqual(['delete', 'chunk']);
+            expect(Resource.findByIdAndUpdate).toHaveBeenCalledWith(
+                'res123',
+                { $set: { metadata: { status: 'rechunking' } } },
+                { new: true }
+            );
+        });
+
+        it('should merge the given settings into the existing ones before chunking', async () => {
+            (Resource.findById as jest.Mock).mockResolvedValue(mockResource);
+            (Resource.findByIdAndUpdate as jest.Mock).mockResolvedValue({ ...mockResource, settings: { chunkSize: 500, chunkOverlap: 50, strategy: 'semantic' } });
+
+            await ResourceService.rechunkResource('res123', { strategy: 'semantic' } as any);
+
+            expect(Resource.findByIdAndUpdate).toHaveBeenCalledWith(
+                'res123',
+                { settings: { chunkSize: 500, chunkOverlap: 50, strategy: 'semantic' } },
+                { new: true }
+            );
+        });
+
+        it('should throw if the resource has no content to re-chunk', async () => {
+            (Resource.findById as jest.Mock).mockResolvedValue({ ...mockResource, content: undefined });
+
+            await expect(ResourceService.rechunkResource('res123'))
+                .rejects.toThrow('has no content to re-chunk');
+            expect(producer.publishToQueue).not.toHaveBeenCalled();
+        });
+
+        it('should throw if chunkingUrl is missing for the custom strategy', async () => {
+            (Resource.findById as jest.Mock).mockResolvedValue(mockResource);
+
+            await expect(ResourceService.rechunkResource('res123', { strategy: 'custom' } as any))
+                .rejects.toThrow("chunkingUrl is required when strategy is 'custom'");
+            expect(producer.publishToQueue).not.toHaveBeenCalled();
         });
     });
 });

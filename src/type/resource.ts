@@ -43,3 +43,10 @@ export const UpdateResourceSchema = ResourceSchema.pick({
 })
 
 export type UpdateResource = z.infer<typeof UpdateResourceSchema>;
+
+// Zod schema for re-chunking an existing resource.
+export const RechunkResourceSchema = z.object({
+  settings: ChunkingSettingsBaseSchema.partial().superRefine(chunkingSettingsRefinement).optional()
+});
+
+export type RechunkResource = z.infer<typeof RechunkResourceSchema>;

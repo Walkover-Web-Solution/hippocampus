@@ -1,6 +1,6 @@
 import express from 'express';
 import ResourceService from '../../service/resource';
-import { CreateResourceSchema, UpdateResourceSchema, Resource, ResourceSchema } from '../../type/resource';
+import { CreateResourceSchema, UpdateResourceSchema, Resource, ResourceSchema, RechunkResourceSchema } from '../../type/resource';
 import ChunkService from '../../service/chunk';
 import { ApiError } from '../../error/api-error';
 import { Chunk } from '../../type/chunk';
@@ -51,6 +51,19 @@ router.put('/:id', async (req, res, next) => {
             throw new ApiError('Resource not found', 404);
         }
         res.json(resource);
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post('/:id/rechunk', async (req, res, next) => {
+    try {
+        const { settings } = await RechunkResourceSchema.parseAsync(req.body ?? {});
+        const resource: Resource = await ResourceService.rechunkResource(req.params.id, settings);
+        res.status(202).json({
+            resource,
+            message: 'Resource queued for re-chunking'
+        });
     } catch (error) {
         next(error);
     }
