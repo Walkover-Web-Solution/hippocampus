@@ -39,4 +39,6 @@ const chunkSchema = new Schema(
 );
 
 
+chunkSchema.index({ resourceId: 1 });
+
 export const Chunk = model<ChunkType>('Chunk', chunkSchema);
