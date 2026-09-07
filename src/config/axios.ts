@@ -1,16 +1,29 @@
 import axios from "axios";
 import http from "http";
 import https from "https";
+import logger from "../service/logger";
 
 // Create an HTTP agent with Keep-Alive enabled
 const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
 
+// Without this a hung server never errors, so the interceptor below never runs.
+const REQUEST_TIMEOUT = 120 * 1000;
+
+const RETRYABLE_CODES = ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN'];
+
 // Create an Axios instance with custom agents
 const axiosInstance = axios.create({
     httpAgent: httpAgent,
-    httpsAgent: httpsAgent
+    httpsAgent: httpsAgent,
+    timeout: REQUEST_TIMEOUT
 });
+
+// Idempotent: re-running it on an already-swapped url is a no-op.
+function swapToBackup(url: string, backupBaseURL: string): string {
+    const { pathname, search } = new URL(url);
+    return new URL(pathname + search, backupBaseURL).toString();
+}
 
 axiosInstance.interceptors.response.use(
     response => response, // Return successful responses directly
@@ -25,9 +38,17 @@ axiosInstance.interceptors.response.use(
         if (config.__retryCount >= config.retry) return Promise.reject(error);
 
         // Condition for retry
-        const shouldRetry = (error.response && error.response.status >= 500) || error.code === 'ECONNRESET';
+        const shouldRetry = (error.response && error.response.status >= 500) || RETRYABLE_CODES.includes(error.code);
         if (shouldRetry) {
             config.__retryCount += 1;
+
+            if (config.backupBaseURL) {
+                const backupUrl = swapToBackup(config.url, config.backupBaseURL);
+                if (backupUrl !== config.url) {
+                    logger.warn(`${config.url} failed (${error.code || error.response?.status}), failing over to ${backupUrl}`);
+                    config.url = backupUrl;
+                }
+            }
 
             // Create a delay (backoff)
             const backoff = new Promise(resolve => {

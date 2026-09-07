@@ -7,6 +7,7 @@ const CONFIG = {
     RETRY_COUNT: 5
 };
 const EMBEDDING_SERVER = process.env.EMBEDDING_SERVER || 'http://127.0.0.1:8000';
+const BACKUP_EMBEDDING_SERVER = process.env.BACKUP_EMBEDDING_SERVER;
 
 export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
     try {
@@ -25,7 +26,8 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
                     'X-Routing-Key': routingKey,
                     'Content-Type': 'application/json'
                 },
-                retry: CONFIG.RETRY_COUNT
+                retry: CONFIG.RETRY_COUNT,
+                backupBaseURL: BACKUP_EMBEDDING_SERVER
             } as any);
             const embeddings: number[][] = response.data.embeddings;
             batch.forEach((item, i) => {
@@ -57,7 +59,8 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
                     'X-Routing-Key': routingKey,
                     'Content-Type': 'application/json'
                 },
-                retry: CONFIG.RETRY_COUNT
+                retry: CONFIG.RETRY_COUNT,
+                backupBaseURL: BACKUP_EMBEDDING_SERVER
             } as any);
             const embeddings = response.data.embeddings;
             const mappedEmbeddings = embeddings.map((emb: Record<string, number>) => {
@@ -96,7 +99,8 @@ export async function generateLateInteractionEmbedding(texts: string[], model: s
                     'X-Routing-Key': routingKey,
                     'Content-Type': 'application/json'
                 },
-                retry: CONFIG.RETRY_COUNT
+                retry: CONFIG.RETRY_COUNT,
+                backupBaseURL: BACKUP_EMBEDDING_SERVER
             } as any);
             const embeddings: number[][][] = response.data.embeddings;
             batch.forEach((item, i) => {
