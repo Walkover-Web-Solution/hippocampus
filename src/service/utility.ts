@@ -1,4 +1,3 @@
-import redis from "../config/redis";
 import crypto from 'crypto';
 type StatusMessage = 'success' | 'error';
 /**
@@ -71,14 +70,17 @@ export function getDefaultPicture(name: string) {
 
 
 const pointerKey = (jobName: string) => `hippocampus:pointer:${jobName}`;
+// Redis is loaded when a job first reads or writes a pointer, not when this file is imported, so processes that only
+// need the interfaces below (the memory server) run without a Redis connection.
+const redis = () => require('../config/redis').default;
 export class JobPointer {
 
     static async getPointer(jobName: string): Promise<string | null> {
-        const pointer = await redis.get(pointerKey(jobName));
+        const pointer = await redis().get(pointerKey(jobName));
         return pointer || null;
     }
     static async setPointer(jobName: string, pointer: string) {
-        redis.set(pointerKey(jobName), pointer);
+        redis().set(pointerKey(jobName), pointer);
     }
 }
 

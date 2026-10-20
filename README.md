@@ -54,7 +54,17 @@ OPENAI_API_KEY=
 QDRANT_URL=
 QDRANT_API_KEY=
 QDRANT_COLLECTION_NAME=
+MASTER_API_KEY=
+# Memory (optional): see docs/MEMORY.md
+MEMORY_DATABASE_URL=
+MEMORY_SIGNERS={"viasocket":"..."}
 ```
+
+---
+
+## Memory: a file system for agents
+
+Beside RAG, Hippocampus is a memory service: spaces are folders, notes are files, every write keeps a version, and every note is indexed by meaning, by words and by the names and links in it. Six verbs over HTTP and as MCP tools (index, open, search, entity, write/edit/learn, delete), access from a token the product signs, time travel with `as_of`, and extraction from conversations as one writer among many. It turns on with `MEMORY_DATABASE_URL` (Postgres with pgvector) and changes nothing about the RAG routes. See [docs/MEMORY.md](docs/MEMORY.md).
 
 ---
 
@@ -78,6 +88,7 @@ View the full API documentation on Postman:
     *   **YouTube**: Transcripts.
 *   **High Performance**: Built with Node.js and FastEmbed for efficient processing.
 *   **Vector Search**: Seamless integration with Qdrant.
+*   **Memory**: A versioned, searchable memory file system for agents on Postgres + pgvector, with MCP tools ([docs/MEMORY.md](docs/MEMORY.md)).
 
 ---
 
@@ -103,6 +114,7 @@ npm run test:watch
 
 *   **Node.js & TypeScript**
 *   **MongoDB (Mongoose)**
+*   **Postgres + pgvector** (memory)
 *   **Qdrant (Vector DB)**
 *   **RabbitMQ (Queues)**
 *   **Langchain & OpenAI**

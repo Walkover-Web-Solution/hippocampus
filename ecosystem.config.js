@@ -30,6 +30,14 @@ module.exports = {
     max_memory_restart: "2000M",
   },
   {
+    name: "memory-consumer",
+    script: "./dist/consumer/index.js",
+    args: "--consumer=memory",
+    instances: 1,
+    exec_mode: "fork",
+    max_memory_restart: "2000M",
+  },
+  {
     name: "embedding-server",
     cwd: "./fastembed",
     script: "./venv/bin/uvicorn main:app"

@@ -1,7 +1,7 @@
 {
   "name": "rag-service",
   "version": "1.0.0",
-  "description": "Provide RAG as a service.",
+  "description": "RAG as a service, and a memory file system for agents.",
   "main": "index.js",
   "scripts": {
     "build": "tsc",
@@ -12,7 +12,13 @@
     "feedback-consumer": "ts-node-dev src/consumer/index.ts --consumer=feedback",
     "dev": "ts-node-dev src/server.ts",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "memory-consumer": "ts-node-dev src/consumer/index.ts --consumer=memory",
+    "memory:migrate": "ts-node -T src/memory/cli.ts migrate",
+    "memory:reindex": "ts-node -T src/memory/cli.ts reindex",
+    "memory:eval": "ts-node -T src/memory/eval/extractor.eval.ts",
+    "memory:server": "ts-node-dev src/memory/server.ts",
+    "memory:start": "node dist/memory/server.js"
   },
   "keywords": [
     "rag",
@@ -35,6 +41,7 @@
     "@types/lodash": "^4.17.13",
     "@types/luxon": "^3.4.2",
     "@types/node": "^22.9.0",
+    "@types/pg": "^8.23.1",
     "@types/request": "^2.48.12",
     "@types/response-time": "^2.3.8",
     "jest": "^29.7.0",
@@ -49,6 +56,7 @@
     "@langchain/core": "^1.1.4",
     "@langchain/langgraph": "^1.0.4",
     "@langchain/openai": "^1.1.3",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@qdrant/qdrant-js": "^1.16.0",
     "amqplib": "^0.10.4",
     "args-parser": "^1.3.0",
@@ -68,6 +76,7 @@
     "newrelic": "^13.8.0",
     "openai": "^4.76.1",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.23.1",
     "puppeteer": "^23.11.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
@@ -79,6 +88,7 @@
     "winston": "^3.17.0",
     "youtube-transcript": "^1.2.1",
     "youtubei.js": "^9.4.0",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.25.2"
   }
 }

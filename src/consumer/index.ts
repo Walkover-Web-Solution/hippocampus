@@ -7,6 +7,7 @@ import rabbitmq from "../config/rabbitmq";
 import rag from './rag';
 import { mongoStoreConsumer, qdrantIndiaStoreConsumer } from "./storage";
 import { feedbackConsumer } from "./feedback";
+import { memoryConsumer } from "../memory/consumer";
 import { connectDB } from "../models";
 import { delay } from "../utility";
 connectDB();
@@ -22,6 +23,9 @@ switch (args?.consumer) {
     break;
   case "feedback":
     CONSUMERS.push(feedbackConsumer);
+    break;
+  case "memory":
+    CONSUMERS.push(memoryConsumer);
     break;
   default:
     break;
