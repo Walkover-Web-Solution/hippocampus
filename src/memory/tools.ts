@@ -126,6 +126,7 @@ export const TOOLS: ToolDefinition[] = [
             messages: z.array(z.object({ role: z.string(), content: z.string() })).optional().describe('The conversation; rules come only from "user" lines.'),
             text: z.string().optional().describe('Or plain text, read as the user speaking.'),
             shared_space: z.string().optional(),
+            share: z.enum(['infer', 'all']).optional().describe('With shared_space: "infer" (default) sorts personal from shared; "all" puts everything learned in shared_space.'),
             subject: z.object({ kind: z.enum(['person', 'thing']).optional(), name: z.string().optional() }).optional().describe('What the space is about: the person speaking (give their name so shared memories say who), or a thing such as an article or account (kind "thing", named; it never sets rules).'),
             instructions: z.string().max(4000).optional().describe('The product\'s own instructions on what is worth keeping, such as "Only save billing and order information." They steer relevance, never the guardrails.'),
             source,

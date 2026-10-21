@@ -75,14 +75,22 @@ You also get the memories already saved, numbered, each marked "yours" when the 
 If it is already saved with the same meaning, leave it out.
 
 Update or forget only when the new statement and the saved memory cannot both be true: a changed plan, a moved date, a corrected name, "not any more". Liking strawberries does not end liking mangoes: a second preference, item or detail beside an old one is an add. Never update because the new statement is more recent.
-A saved memory written by someone else about a person (their preference, role, name or state) is not the speaker's to change: what the speaker says about that person is added beside it, worded as the speaker's statement with the speaker's name when given ("Rahul says Maya loves strawberries."; unnamed: "Says Maya loves strawberries."), never an update or a forget. Facts about the team, company, product or account may be updated by anyone who speaks for it.
+A saved memory marked "locked" was written by someone else in a space where the speaker may only add: never update or forget it; what the speaker says about it is added beside it. Any other saved memory, whoever wrote it, follows the rule above. What the speaker adds about another person is worded as the speaker's statement, with the speaker's name when given ("Rahul says Maya loves strawberries."; unnamed: "Says Maya loves strawberries."), so readers know who said it.
 
 expires_on is only for a state that ends on a known date: someone on leave or travelling until a day, an offer or sale running until a day. Set it to the day after the state ends, as YYYY-MM-DD, counting from today's date given below; a date without a year is its next one from today. Dates of events, launches, deadlines and plans are facts, not end dates: "launching on November 3" keeps expires_on null. Otherwise expires_on is null.
 
 Write each memory as one short sentence in the language of the text, in third person, keeping names spelled and capitalised as written; the note on the subject below says how a memory about the subject is worded. Confidence (0 to 1) is how sure you are that it is lasting and stated as true.
 Return {"operations": []} when nothing should change.`;
 
-const sharedInstructions = (space: string | null): string => (space
+const sharedInstructions = (space: string | null, all = false): string => {
+    if (space && all) {
+        return `Everything learned here is kept in the shared space "${space}", which everyone in it reads: set shared to true for every memory. `
+            + 'When the subject has a name, every memory about the subject begins with that name.';
+    }
+    return sharedInferred(space);
+};
+
+const sharedInferred = (space: string | null): string => (space
     ? `Memories are kept either in the subject's own space or in the shared space "${space}", which everyone in the subject's team or account uses. `
     + `Set shared to true for what everyone in "${space}" should know: facts about the team, company or account (its plan, products, launches, customers, tools, policies) and rules the user sets for the whole team. `
     + `Set shared to false for things about the subject alone: their own preferences, role, name and requests. A rule about how to reply to the user (tone, length, format, language) is theirs alone unless they say it is for the whole team. `
@@ -263,7 +271,7 @@ const toLessonOperation = (value: unknown): LessonOperation | null => {
 
 const describeKnown = (known: KnownMemory[]): string => (known.length
     ? known.map((memory) => {
-        const author = memory.mine === true ? ', yours' : (memory.mine === false && memory.writtenBy ? `, by ${memory.writtenBy}` : '');
+        const author = (memory.mine === true ? ', yours' : (memory.mine === false && memory.writtenBy ? `, by ${memory.writtenBy}` : '')) + (memory.locked ? ', locked' : '');
         const label = [memory.kind, memory.slot].filter(Boolean).join(':') + (memory.shared ? ', shared' : '') + author;
         const confirmed = memory.evidenceCount && memory.evidenceCount > 1 ? ` (confirmed ${memory.evidenceCount} times)` : '';
         return `${memory.ref}. [${label}] ${memory.text}${confirmed}`;
@@ -349,7 +357,7 @@ export class ChatModels implements Models {
                 EXTRACT_INSTRUCTIONS,
                 subjectInstructions(context.subject),
                 graphInstructions(context.subject),
-                sharedInstructions(context.sharedSpace),
+                sharedInstructions(context.sharedSpace, context.shareAll === true),
                 context.rulesAllowed ? '' : NO_USER_INSTRUCTIONS,
                 productInstructions(context.instructions),
                 knownEntitiesNote(context.knownEntities),

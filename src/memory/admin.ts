@@ -86,7 +86,7 @@ router.post('/token', wrap(async (req) => {
         org: z.string().max(200),
         project: z.string().max(200),
         caller: z.string().max(200).optional(),
-        spaces: z.record(z.enum(['read', 'write'])),
+        spaces: z.record(z.enum(['read', 'append', 'write'])),
         expires_in: z.union([z.string(), z.number().int().positive()]).optional(),
     }), req.body);
     const signer = await findSigner(input.issuer);

@@ -16,6 +16,7 @@ export type MemoryJob =
         caller: string;
         space: string;
         shared_space?: string | null;
+        share_all?: boolean;
         text: string;
         source?: Source | null;
         rules_allowed?: boolean;

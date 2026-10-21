@@ -147,10 +147,12 @@ export interface KnownMemory {
     text: string;
     evidenceCount?: number;
     shared?: boolean;
-    // Who created it, and whether that is the current speaker: a memory someone else wrote about a person is added
-    // beside, never changed.
+    // Who created it, and whether that is the current speaker.
     writtenBy?: string | null;
     mine?: boolean;
+    // Someone else wrote it in a space the caller may only append to: it is added beside, never changed. With write,
+    // nothing is locked: the grant, not the extractor, decides who may change what.
+    locked?: boolean;
 }
 
 export type ExtractionAction = 'add' | 'update' | 'forget';
@@ -178,6 +180,8 @@ export interface ExtractionSubject {
 
 export interface ExtractionContext {
     sharedSpace: string | null;
+    // True when the product says everything learned goes to the shared space, instead of the extractor sorting it.
+    shareAll?: boolean;
     today: string;
     // False when nobody in the text is the user, such as a customer's ticket: then only facts may be learned.
     rulesAllowed: boolean;

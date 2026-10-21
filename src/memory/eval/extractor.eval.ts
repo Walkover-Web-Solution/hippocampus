@@ -66,8 +66,35 @@ const extraction: Case[] = [
         check: (ops) => (confident(ops).some((op) => (op.action === 'update' || op.action === 'forget') && op.ref === 1) ? null : `expected update#1 or forget#1: ${show(confident(ops))}`),
     },
     {
+        name: "with append only, someone else's memory is added beside with attribution, never replaced",
+        run: () => models.extract('Maya moved from floor 2 to floor 3 last week.', numbered([fact('Maya sits on floor 2.', { shared: true, mine: false, writtenBy: 'users/maya', locked: true })]), context({ sharedSpace: 'teams/acme', subject: { kind: 'person', name: 'Rahul' } })),
+        check: (ops) => {
+            if (confident(ops).some((op) => op.action !== 'add')) return `a locked memory is not Rahul's to change: ${show(confident(ops))}`;
+            const said = confident(ops).find((op) => has(op.text, 'floor 3'));
+            if (!said) return 'expected an added memory about floor 3';
+            if (!has(said.text, 'Rahul') || !/says|said|notes|noted|according/i.test(said.text)) return `expected it worded as Rahul's statement: "${said.text}"`;
+            return null;
+        },
+    },
+    {
+        name: 'with write, the same correction follows the contradiction rule and updates',
+        run: () => models.extract('Maya moved from floor 2 to floor 3 last week.', numbered([fact('Maya sits on floor 2.', { shared: true, mine: false, writtenBy: 'users/maya' })]), context({ sharedSpace: 'teams/acme', subject: { kind: 'person', name: 'Rahul' } })),
+        check: (ops) => (confident(ops).some((op) => op.action === 'update' && op.ref === 1 && has(op.text, 'floor 3')) ? null : `the grant allows it, so expected update#1: ${show(confident(ops))}`),
+    },
+    {
+        name: 'share "all": everything goes to the shared space and names the subject',
+        run: () => models.extract('I prefer short replies and I love mangoes.', [], context({ sharedSpace: 'teams/acme', shareAll: true, subject: { kind: 'person', name: 'Maya' } })),
+        check: (ops) => {
+            const all = confident(ops);
+            if (!all.length) return 'expected memories';
+            if (all.some((op) => !op.shared)) return `share all puts everything in the shared space: ${show(all)}`;
+            if (all.some((op) => op.kind === 'fact' && !has(op.text, 'Maya'))) return `shared facts name the subject: ${show(all)}`;
+            return null;
+        },
+    },
+    {
         name: "someone else's statement about a person is added with attribution, never replaces",
-        run: () => models.extract('no, note that Maya loves strawberries', numbered([fact('Maya loves mangoes.', { shared: true, mine: false, writtenBy: 'users/maya' })]), context({ sharedSpace: 'teams/acme', subject: { kind: 'person', name: 'Rahul' } })),
+        run: () => models.extract('no, note that Maya loves strawberries', numbered([fact('Maya loves mangoes.', { shared: true, mine: false, writtenBy: 'users/maya', locked: true })]), context({ sharedSpace: 'teams/acme', subject: { kind: 'person', name: 'Rahul' } })),
         check: (ops) => {
             if (confident(ops).some((op) => op.action !== 'add')) return `Maya's own statement is not Rahul's to change: ${show(confident(ops))}`;
             const said = confident(ops).find((op) => has(op.text, 'strawberr'));

@@ -71,7 +71,7 @@ interface Known {
     text: string;
 }
 
-const toKnown = (items: Known[], sharedSpaceId?: string | null, caller?: string): KnownMemory[] => items.map(({ note, text }, i) => ({
+const toKnown = (items: Known[], sharedSpaceId?: string | null, caller?: string, canReplaceIn?: (spaceId: string) => boolean): KnownMemory[] => items.map(({ note, text }, i) => ({
     ref: i + 1,
     kind: note.kind,
     slot: note.slot,
@@ -80,6 +80,7 @@ const toKnown = (items: Known[], sharedSpaceId?: string | null, caller?: string)
     shared: Boolean(sharedSpaceId) && note.space_id === sharedSpaceId,
     writtenBy: note.written_by,
     mine: caller ? note.written_by === caller : undefined,
+    locked: Boolean(caller && canReplaceIn) && note.written_by !== caller && !canReplaceIn!(note.space_id),
 }));
 const fromHits = (hits: SearchHit[]): Known[] => hits.map((hit) => ({ note: hit.note, text: hit.excerpt }));
 const fromRules = (rules: NoteRow[]): Known[] => rules.map((note) => ({ note, text: note.body ?? note.summary ?? '' }));
@@ -169,6 +170,8 @@ export interface LearnInput {
     canReplace?: (space: SpaceRow) => boolean;
     // The product's instructions on what is worth keeping, handed to the extractor as data.
     instructions?: string | null;
+    // True puts everything learned in the shared space, as the product says, instead of the extractor sorting it.
+    shareAll?: boolean;
 }
 
 const links = (operation: ExtractedOperation): Links => ({ entities: operation.entities, relations: operation.relations });
@@ -176,7 +179,7 @@ const links = (operation: ExtractedOperation): Links => ({ entities: operation.e
 async function apply(caller: string, input: LearnInput, operation: ExtractedOperation, known: Known | undefined, index: IndexFn): Promise<LearnChange | null> {
     // The space this piece of information belongs in. A change or a forget only touches a saved note in that same
     // space: the team's "formal tone" is never rewritten because one user wants casual replies.
-    const space = operation.shared && input.sharedSpace ? input.sharedSpace : input.space;
+    const space = (operation.shared || input.shareAll) && input.sharedSpace ? input.sharedSpace : input.space;
     const canReplace = input.canReplace ? input.canReplace(space) : true;
     // A note someone else created is only this caller's to change with write on the space; with append, a change
     // is added beside it and a forget is skipped.
@@ -219,8 +222,13 @@ export async function learn(caller: string, input: LearnInput, index: IndexFn): 
         knownEntities(spaces),
     ]);
     const known = [...new Map([...fromRules(rules), ...fromHits(related)].map((item) => [item.note.id, item])).values()];
-    const operations = await models.extract(said, toKnown(known, input.sharedSpace?.id, caller), {
+    const canReplaceIn = (spaceId: string): boolean => {
+        const space = spaces.find((s) => s.id === spaceId);
+        return !space || !input.canReplace || input.canReplace(space);
+    };
+    const operations = await models.extract(said, toKnown(known, input.sharedSpace?.id, caller, canReplaceIn), {
         sharedSpace: input.sharedSpace?.name ?? null,
+        shareAll: Boolean(input.shareAll && input.sharedSpace),
         today: today(),
         rulesAllowed,
         knownEntities: names,

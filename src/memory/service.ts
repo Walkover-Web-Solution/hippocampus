@@ -267,6 +267,9 @@ export const memoryService = {
     async learn(auth: MemoryAuth, input: Record<string, unknown>) {
         const space = await spaceOf(auth, input.space, 'append') as SpaceRow;
         const sharedSpace = input.shared_space ? await spaceOf(auth, input.shared_space, 'append') : null;
+        // The product may say where learning writes instead of letting the extractor sort it.
+        const shareAll = input.share === 'all' && Boolean(sharedSpace);
+        if (input.share === 'all' && !sharedSpace) throw new ApiError('share "all" needs a shared_space', 400);
         const writeSpaces = [space, sharedSpace].filter((s): s is SpaceRow => Boolean(s) && auth.grants.can((s as SpaceRow).name, 'write')).map((s) => s.name);
         let text: string;
         let rulesAllowed = input.rules_allowed !== false;
@@ -289,14 +292,14 @@ export const memoryService = {
         if (input.async === true) {
             try {
                 await publishMemoryJob({
-                    type: 'learn', tenant: auth.tenant, caller: auth.caller, space: space.name, shared_space: sharedSpace?.name ?? null, text, source, rules_allowed: rulesAllowed, subject, instructions, write_spaces: writeSpaces,
+                    type: 'learn', tenant: auth.tenant, caller: auth.caller, space: space.name, shared_space: sharedSpace?.name ?? null, share_all: shareAll, text, source, rules_allowed: rulesAllowed, subject, instructions, write_spaces: writeSpaces,
                 });
                 return { queued: true };
             } catch (error: any) {
                 logger.error(`[MEMORY](queue) learn job not published, learning inline: ${error?.message}`);
             }
         }
-        const result = await learn(auth.caller, { space, sharedSpace, text, source, rulesAllowed, subject, instructions, canReplace: (s) => writeSpaces.includes(s.name) }, indexAfterWrite);
+        const result = await learn(auth.caller, { space, sharedSpace, shareAll, text, source, rulesAllowed, subject, instructions, canReplace: (s) => writeSpaces.includes(s.name) }, indexAfterWrite);
         return { queued: false, changes: result.changes.map(presentChange), skipped: result.skipped, failed: result.failed };
     },
 
@@ -421,5 +424,5 @@ export async function learnFromJob(job: Extract<MemoryJob, { type: 'learn' }>) {
     const tenant: Tenant = job.tenant;
     const space = await ensureSpace(tenant, job.space);
     const sharedSpace = job.shared_space ? await ensureSpace(tenant, job.shared_space) : null;
-    return learn(job.caller, { space, sharedSpace, text: job.text, source: job.source ?? null, rulesAllowed: job.rules_allowed !== false, subject: job.subject ?? null, instructions: job.instructions ?? null, canReplace: (s) => !job.write_spaces || job.write_spaces.includes(s.name) }, indexAfterWrite);
+    return learn(job.caller, { space, sharedSpace, shareAll: job.share_all === true, text: job.text, source: job.source ?? null, rulesAllowed: job.rules_allowed !== false, subject: job.subject ?? null, instructions: job.instructions ?? null, canReplace: (s) => !job.write_spaces || job.write_spaces.includes(s.name) }, indexAfterWrite);
 }
