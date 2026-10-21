@@ -24,6 +24,9 @@ import { recordUsage, runWithUsage, tokensUsed } from './usage';
  */
 export const MAX_GRANTS = 50;
 
+// Each level includes the ones below it: write may do everything append may, append everything read may.
+const RANK: Record<Access, number> = { read: 0, append: 1, write: 2 };
+
 export interface MemoryAuth {
     tenant: Tenant;
     caller: string;
@@ -39,12 +42,12 @@ export class Grants {
 
     static parse(claim: unknown): Grants {
         if (claim === undefined || claim === null) return new Grants([]);
-        if (typeof claim !== 'object' || Array.isArray(claim)) throw new ApiError('The token\'s "spaces" must map space names to "read" or "write"', 401);
+        if (typeof claim !== 'object' || Array.isArray(claim)) throw new ApiError('The token\'s "spaces" must map space names to "read", "append" or "write"', 401);
         const entries = Object.entries(claim as Record<string, unknown>);
         if (entries.length > MAX_GRANTS) throw new ApiError(`The token grants more than ${MAX_GRANTS} spaces`, 401);
         return new Grants(entries.map(([pattern, access]) => {
             if (!isGrantPattern(pattern)) throw new ApiError(`The token grants an invalid space name "${pattern}"`, 401);
-            if (access !== 'read' && access !== 'write') throw new ApiError(`The token's grant for "${pattern}" must be "read" or "write"`, 401);
+            if (access !== 'read' && access !== 'append' && access !== 'write') throw new ApiError(`The token's grant for "${pattern}" must be "read", "append" or "write"`, 401);
             return [pattern, access];
         }));
     }
@@ -54,7 +57,7 @@ export class Grants {
     }
 
     patternsWith(access: Access): string[] {
-        return [...this.byPattern.entries()].filter(([, granted]) => access === 'read' || granted === 'write').map(([pattern]) => pattern);
+        return [...this.byPattern.entries()].filter(([, granted]) => RANK[granted] >= RANK[access]).map(([pattern]) => pattern);
     }
 
     // The access to one space: the most specific pattern that covers it decides, so "customers/*": read with
@@ -71,7 +74,7 @@ export class Grants {
 
     can(space: string, access: Access): boolean {
         const granted = this.accessTo(space);
-        return granted !== null && (access === 'read' || granted === 'write');
+        return granted !== null && RANK[granted] >= RANK[access];
     }
 
     require(space: string, access: Access): string {

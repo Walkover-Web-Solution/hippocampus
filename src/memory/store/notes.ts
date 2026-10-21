@@ -28,6 +28,9 @@ export interface WriteInput {
     confidence?: number | null;
     // Refused when the note is not at this version: two writers cannot silently race.
     ifVersion?: number | null;
+    // True for a caller granted append, not write: they may create notes and change their own, never replace a
+    // note someone else created.
+    onlyOwn?: boolean;
     // Why this version exists: write, edit, learn, remember, document, feedback.
     change?: string;
 }
@@ -60,12 +63,15 @@ export async function writeNote(caller: string, input: WriteInput): Promise<Writ
     const path = normalizePath(input.path);
     const body = input.body.replace(/\r\n?/g, '\n');
     return withTransaction(async (client) => {
-        const existing = await one<{ id: string; kind: string; slot: string | null; version: number | null; title: string | null }>(
-            `SELECT n.id, n.kind, n.slot, v.version, v.title FROM memory_notes n LEFT JOIN memory_note_versions v ON v.id = n.current_version_id
+        const existing = await one<{ id: string; kind: string; slot: string | null; version: number | null; title: string | null; written_by: string }>(
+            `SELECT n.id, n.kind, n.slot, n.written_by, v.version, v.title FROM memory_notes n LEFT JOIN memory_note_versions v ON v.id = n.current_version_id
              WHERE n.space_id = $1 AND n.path = $2 FOR UPDATE OF n`,
             [input.space.id, path],
             client,
         );
+        if (existing && input.onlyOwn && existing.written_by !== caller) {
+            throw new ApiError(`"${path}" was written by ${existing.written_by}; this token may add to "${input.space.name}" but not change what others wrote`, 403);
+        }
         const currentVersion = existing?.version ?? 0;
         if (input.ifVersion !== undefined && input.ifVersion !== null && input.ifVersion !== currentVersion) {
             throw new ApiError(`"${path}" is at version ${currentVersion}, not ${input.ifVersion}: read it again before writing`, 409);
@@ -98,7 +104,7 @@ export async function writeNote(caller: string, input: WriteInput): Promise<Writ
             [versionId, noteId, version, title, firstSentence(body), body, caller, input.change ?? 'write'],
         );
         await client.query(
-            `UPDATE memory_notes SET current_version_id = $2, status = 'active', updated_at = now(), kind = $3, slot = $4, written_by = $5,
+            `UPDATE memory_notes SET current_version_id = $2, status = 'active', updated_at = now(), kind = $3, slot = $4, written_by = COALESCE(written_by, $5),
                 labels = COALESCE($6::text[], labels),
                 valid_from = COALESCE($7, valid_from),
                 valid_to = CASE WHEN $8 THEN $9 ELSE valid_to END,

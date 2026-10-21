@@ -3,7 +3,8 @@
  * a space holds notes (files) at paths; every write of a note is a new version; every version is indexed by meaning
  * (chunks with embeddings), by words (a tsvector) and by the names and links in it (the graph).
  */
-export type Access = 'read' | 'write';
+// read: see the space. append: add notes and change your own. write: also replace or delete what others wrote.
+export type Access = 'read' | 'append' | 'write';
 
 export interface Tenant {
     issuer: string;
@@ -146,6 +147,10 @@ export interface KnownMemory {
     text: string;
     evidenceCount?: number;
     shared?: boolean;
+    // Who created it, and whether that is the current speaker: a memory someone else wrote about a person is added
+    // beside, never changed.
+    writtenBy?: string | null;
+    mine?: boolean;
 }
 
 export type ExtractionAction = 'add' | 'update' | 'forget';
@@ -164,12 +169,24 @@ export interface ExtractedOperation {
     confidence: number;
 }
 
+// The subject of a space. A person is the user speaking; a name lets shared memories say who. A thing (an article,
+// a product, an account) never speaks, so no rules are learned about it and every memory names it.
+export interface ExtractionSubject {
+    kind: 'person' | 'thing';
+    name: string | null;
+}
+
 export interface ExtractionContext {
     sharedSpace: string | null;
     today: string;
     // False when nobody in the text is the user, such as a customer's ticket: then only facts may be learned.
     rulesAllowed: boolean;
     knownEntities: TypedEntity[];
+    // What the space is about: the person speaking (the default, optionally named), or a thing the product names.
+    subject?: ExtractionSubject | null;
+    // What the product says is worth keeping ("only save billing and order information"): it narrows or extends
+    // relevance, never the guardrails (the never-save list, who may set rules).
+    instructions?: string | null;
 }
 
 export type ReconcileDecision = 'new' | 'replaces' | 'duplicate';
@@ -205,5 +222,6 @@ export interface Models {
 export interface Embedder {
     readonly model: string;
     readonly dimensions: number;
-    embed(texts: string[]): Promise<number[][]>;
+    // Queries and documents are embedded differently by some models (EmbeddingGemma), so the caller says which it has.
+    embed(texts: string[], kind: 'query' | 'document'): Promise<number[][]>;
 }

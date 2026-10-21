@@ -23,12 +23,22 @@ Base path: `/memory` on any Hippocampus server with `MEMORY_DATABASE_URL` set. T
 ```properties
 MEMORY_DATABASE_URL=postgres://user:pass@host:5432/hippocampus   # Postgres 14+ with the pgvector extension (0.5+)
 MEMORY_SIGNERS={"viasocket":"<secret shared with viaSocket>"}     # or register signers through the admin API
-MEMORY_EMBEDDING_MODEL=text-embedding-3-small                      # any dense model the Encoder knows
-MEMORY_EMBEDDING_DIMENSIONS=1536                                   # must match the model; changing it needs a reindex
-MEMORY_EXTRACTION_MODEL=gpt-4.1-mini                               # learn, link, merge, lessons, summaries
-OPENAI_API_KEY=...                                                 # for the extraction model
-OPENAI_API_KEY_EMBEDDING=...                                       # for OpenAI embedding models
+MEMORY_EMBEDDING_MODEL=google/embeddinggemma-300m                 # any dense model the Encoder knows; this one is local
+MEMORY_EMBEDDING_DIMENSIONS=768                                    # must match the model; changing the model needs a reindex
+MEMORY_MAX_DISTANCE=0.72                                           # optional; defaults follow the model (0.8 for OpenAI's)
+EMBEDDING_SERVER=http://127.0.0.1:8000                             # the FastEmbed sidecar that runs local models
+MEMORY_EXTRACTION_MODEL=claude-haiku-5-5                           # learn, link, merge, lessons, summaries; or an OpenAI model
+MEMORY_EXTRACTION_FALLBACK_MODEL=gpt-4.1-mini                      # the other provider, used when the first one fails
+ANTHROPIC_API_KEY=...                                              # for a Claude extraction model (the default)
+OPENAI_API_KEY=...                                                 # for an OpenAI extraction model (the default fallback)
+OPENAI_API_KEY_EMBEDDING=...                                       # only if MEMORY_EMBEDDING_MODEL is an OpenAI model
 ```
+
+Embeddings come from Google's EmbeddingGemma (open weights, 100+ languages) running on CPU in the FastEmbed sidecar: `cd fastembed && pip install -r requirements.txt && uvicorn main:app` (the `embedding-server` app in `ecosystem.config.js`; the model, 1.2 GB, is downloaded on first start). No text leaves the machine to be embedded. Set `MEMORY_EMBEDDING_MODEL=text-embedding-3-small` and `MEMORY_EMBEDDING_DIMENSIONS=1536` to use OpenAI instead.
+
+Deploying a model change: the Docker image downloads the model at build time (`FASTEMBED_CACHE_PATH`), so nothing is installed by hand and a container does not depend on Hugging Face at start. A database that already holds an index made with another model fails its migration at start (the error is logged and memory writes are rejected), because its vector column has the old size; start once with `MEMORY_EMBEDDING_REINDEX=true` and the server drops the chunks, resizes the column and re-indexes every note (through the memory consumer when a broker is configured). Until that finishes, search finds only word and name matches. An empty index is resized silently.
+
+Extraction can have a second model: `MEMORY_EXTRACTION_FALLBACK_MODEL=gpt-4.1-mini` behind `MEMORY_EXTRACTION_MODEL=claude-haiku-5-5` means an Anthropic outage or rate limit costs one warning line, not a lost memory. Each provider needs its key.
 
 The schema is created on start (`MEMORY_AUTO_MIGRATE=false` to run `npm run memory:migrate` yourself). Long notes and documents are indexed by the memory consumer: `npm run memory-consumer`, or the `memory-consumer` app in `ecosystem.config.js`. Without a broker, indexing runs inside the request.
 
@@ -55,7 +65,7 @@ Every call carries a short-lived HS256 JWT, as `Authorization: Bearer <token>`, 
 | `iss` | The signer: `viasocket`, or the product's own issuer registered through `/memory/admin/signers`. Its secret verifies the token. |
 | `sub` | Who is calling, recorded as who wrote a note. Any string; the user's space name is a good choice. |
 | `org`, `project` | The product's own tenant ids (`org_id` and `project_id` are accepted too). With `iss` they make the tenant every row carries. |
-| `spaces` | Up to 50 grants, each `"read"` or `"write"`. A name is segments of letters, digits and `_ . @ -` joined by `/`. `"folder/*"` grants everything under a folder, `"*"` every space. The most specific grant for a space wins. |
+| `spaces` | Up to 50 grants, each `"read"`, `"append"` or `"write"`. `read` sees the space. `append` adds notes and changes the caller's own, but never replaces or deletes a note someone else created: a change to another's note is added beside it, with who says so. `write` may change and delete anything. A name is segments of letters, digits and `_ . @ -` joined by `/`. `"folder/*"` grants everything under a folder, `"*"` every space. The most specific grant for a space wins. |
 | `exp` | Required. A token is never accepted for longer than `MEMORY_TOKEN_MAX_AGE` (7 days by default). |
 
 Hippocampus takes the tenant and grants from the token only, never from the request body. A space not granted is a `403` before anything runs. There is no magic "me": private memory is a folder the product names, such as `users/<id>`, granted only to that user's tokens. Identity never enters Hippocampus.
@@ -187,7 +197,13 @@ POST /memory/learn
   "skipped": 0, "failed": 0 }
 ```
 
-Rules come only from `user` lines; a transcript with no `user` speaker teaches facts only, and a customer's "always give us 50% off" is saved as a request, never as a rule. Tasks, questions, small talk and secrets (keys, passwords, card numbers, emails, phone numbers) are never saved. A changed fact becomes a new version of the note that held it; "forget that" archives it (kept in history, not recalled); a repeat confirms. With `shared_space`, what is about the team or account goes there. `async: true` answers `202` and the consumer learns.
+Rules come only from `user` lines; a transcript with no `user` speaker teaches facts only, and a customer's "always give us 50% off" is saved as a request, never as a rule. Tasks, questions, small talk and secrets (keys, passwords, card numbers, emails, phone numbers) are never saved. A changed fact becomes a new version of the note that held it; "forget that" archives it (kept in history, not recalled); a repeat confirms. With `shared_space`, what is about the team or account goes there; what the user asks the team to know goes there too, even when it is about them. `async: true` answers `202` and the consumer learns.
+
+Every space is about a **subject**. By default it is the person speaking; give `subject: { "name": "Maya" }` and a memory shared with the team says who ("Maya is on leave next week."). A space can be about a thing instead: `subject: { "kind": "thing", "name": "Pricing article" }` for an article, a product, an account. A thing never speaks, so no rules are learned about it, and every memory names it ("Pricing article was last reviewed in March."). In the graph the subject is a node named after it (`maya`, `pricing article`), or `user` when no name is given.
+
+`instructions` carries the product's own view of what is worth keeping ("Only save billing and order information", "Diet and allergies are team facts for us"). They steer relevance; they never change the guardrails (the never-save list, who may set rules).
+
+`instructions` (optional, up to 4000 characters) is the product's own view of what is worth keeping, such as "Only save billing and order information." It narrows or extends what is saved, for rules and facts alike, so a support product keeps support memories and a health app keeps health ones. It steers relevance only: the never-save list and who may set rules hold whatever it says.
 
 Feedback on an answer becomes a lesson used on similar tasks next time:
 
@@ -252,5 +268,6 @@ One row per call in `memory_usage`: issuer, org, project, caller, verb and the m
 ```bash
 npm test -- src/memory                                        # unit: grants, tokens, paths, chunking, edits, prompt
 MEMORY_TEST_DATABASE_URL=postgres://... npm test -- integration   # end to end on a real Postgres, fake models
-npm run memory:eval                                           # golden cases for the extraction prompts (needs OPENAI_API_KEY)
+npm run memory:eval                                           # golden cases for the extraction prompts (needs the model's key)
+MEMORY_EXTRACTION_MODEL=claude-haiku-5-5 npm run memory:eval  # the same cases on a candidate model, before making it the default
 ```

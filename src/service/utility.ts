@@ -90,9 +90,12 @@ export interface ContentLoader {
 }
 
 
-export type ModelDetail = { name: string; provider: string; description: string; latency: string; }
+export type ModelDetail = { name: string; provider: string; description: string; latency: string; dimensions?: number; }
+// What a text is for. Some models (EmbeddingGemma, E5, Nomic) were trained with different prefixes for queries and
+// documents and lose much of their accuracy without them; the sidecar adds the right one. Others ignore the kind.
+export type EmbeddingKind = 'query' | 'document';
 export interface IEncoder {
-    encode(chunks: string[], model?: string): Promise<any>;
+    encode(chunks: string[], model?: string, kind?: EmbeddingKind): Promise<any>;
     getModelDetail(model: string): ModelDetail | undefined;
 }
 

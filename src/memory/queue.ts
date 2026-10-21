@@ -1,5 +1,5 @@
 import { memoryConfig } from './config';
-import { Links, Source, Tenant } from './types';
+import { ExtractionSubject, Links, Source, Tenant } from './types';
 
 /**
  * Work the memory consumer does off the request: indexing a long version, learning from a conversation, loading a
@@ -19,6 +19,10 @@ export type MemoryJob =
         text: string;
         source?: Source | null;
         rules_allowed?: boolean;
+        subject?: ExtractionSubject | null;
+        instructions?: string | null;
+        // The spaces the caller may replace others' notes in (write); the rest are append.
+        write_spaces?: string[];
     };
 
 export const queueConfigured = (): boolean => Boolean(process.env.QUEUE_CONNECTIONURL);

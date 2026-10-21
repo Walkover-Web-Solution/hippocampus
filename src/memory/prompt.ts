@@ -20,6 +20,8 @@ export interface PromptParts {
     hits: SearchHit[];
     lessons: SearchHit[];
     connections: Connection[];
+    // Who is asking: their own notes read "noted by you", anyone else's name who wrote them.
+    caller?: string;
 }
 
 const asOf = (date: Date): string => new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -31,7 +33,13 @@ const words = (relation: string): string => relation.replace(/_/g, ' ');
 
 const ruleLine = (note: NoteRow): string => `- ${note.slot ? `(${words(note.slot)}) ` : ''}${clip(note.body ?? note.summary ?? '')}`;
 // The date tells the assistant how fresh a note is: "on the Pro plan (as of 3 Mar)" may no longer be true in October.
-const hitLine = (hit: SearchHit): string => `- ${hit.note.title ? `${hit.note.title}: ` : ''}${clip(hit.excerpt)} (${hit.note.space}/${hit.note.path}, as of ${asOf(hit.note.updated_at)})`;
+// Who wrote it tells the assistant whether it is first-hand: what the user said, or what someone else noted.
+const notedBy = (hit: SearchHit, caller?: string): string => {
+    const writer = hit.note.version_written_by ?? hit.note.written_by;
+    if (!caller || !writer) return '';
+    return writer === caller ? ', noted by you' : `, noted by ${writer}`;
+};
+const hitLine = (hit: SearchHit, caller?: string): string => `- ${hit.note.title ? `${hit.note.title}: ` : ''}${clip(hit.excerpt)} (${hit.note.space}/${hit.note.path}, as of ${asOf(hit.note.updated_at)}${notedBy(hit, caller)})`;
 const lessonLine = (hit: SearchHit): string => `- ${clip(hit.excerpt)}${hit.note.evidence_count > 1 ? ` (confirmed ${hit.note.evidence_count} times)` : ''}`;
 // "acme: → uses hubspot; → plan business plan; ← maya works at": each link read from the name's side.
 export const linkPhrase = (name: string, link: EntityLink): string => (link.subject === name ? `→ ${words(link.relation)} ${link.object}` : `← ${link.subject} ${words(link.relation)}`);
@@ -55,10 +63,10 @@ export const groupConnections = (names: string[], links: EntityLink[]): Connecti
     return { name, links: own.slice(0, MAX_LINKS_PER_NAME) };
 }).filter((group) => group.links.length);
 
-const render = ({ rules, hits, lessons, connections }: PromptParts): string => {
+const render = ({ rules, hits, lessons, connections, caller }: PromptParts): string => {
     const sections = [...HEADER];
     if (rules.length) sections.push(`Rules:\n${rules.map(ruleLine).join('\n')}`);
-    if (hits.length) sections.push(`Relevant notes:\n${hits.map(hitLine).join('\n')}`);
+    if (hits.length) sections.push(`Relevant notes:\n${hits.map((hit) => hitLine(hit, caller)).join('\n')}`);
     if (connections.length) sections.push(`Connections:\n${connections.map(connectionLine).join('\n')}`);
     if (lessons.length) sections.push(`Lessons from feedback:\n${lessons.map(lessonLine).join('\n')}`);
     return sections.join('\n\n');

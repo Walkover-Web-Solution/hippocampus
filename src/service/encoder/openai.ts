@@ -1,9 +1,10 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
 import env from "../../config/env";
-import { IEncoder, ModelDetail } from "../utility";
+import { EmbeddingKind, IEncoder, ModelDetail } from "../utility";
 
 export class OpenAiEncoder implements IEncoder {
-    async encode(chunks: string[], model: string = 'text-embedding-3-small') {
+    // OpenAI's models embed queries and documents the same way; the kind is accepted and ignored.
+    async encode(chunks: string[], model: string = 'text-embedding-3-small', _kind?: EmbeddingKind) {
         const embeddings = new OpenAIEmbeddings({
             openAIApiKey: env.OPENAI_API_KEY_EMBEDDING,
             batchSize: 100,
@@ -18,14 +19,16 @@ export class OpenAiEncoder implements IEncoder {
             name: "OpenAI Text Embedding 3 Small",
             provider: "OpenAI",
             description: "A smaller version of OpenAI's text embedding model optimized for general-purpose text embeddings.",
-            latency: "Low"
+            latency: "Low",
+            dimensions: 1536
         });
 
         modelDetails.set("text-embedding-3-large", {
             name: "OpenAI Text Embedding 3 Large",
             provider: "OpenAI",
             description: "A larger version of OpenAI's text embedding model providing higher accuracy for complex text embeddings.",
-            latency: "Medium"
+            latency: "Medium",
+            dimensions: 3072
         });
 
         return modelDetails.get(model);

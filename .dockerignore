@@ -1,6 +1,7 @@
 node_modules
 dist
 fastembed/venv
+fastembed/models
 fastembed/__pycache__
 .git
 .env

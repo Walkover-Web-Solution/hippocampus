@@ -1,4 +1,5 @@
 import { Params, query, toVector } from '../db';
+import { memoryConfig } from '../config';
 import { embedder } from '../embedder';
 import { Connection, groupConnections, renderPrompt } from '../prompt';
 import { queryTerms } from '../text';
@@ -13,10 +14,11 @@ import { linksOf, matchEntities, neighbours } from './graph';
  */
 export const DEFAULT_TOP_K = 5;
 export const MAX_TOP_K = 50;
-// Cosine distance above which a chunk is too far from the query to be worth returning. Measured with
-// text-embedding-3-small: related facts landed between 0.27 and 0.79, unrelated ones between 0.80 and 0.92.
-export const DEFAULT_MAX_DISTANCE = 0.8;
-const LESSON_MAX_DISTANCE = 0.85;
+// Cosine distance above which a chunk is too far from the query to be worth returning. The scale depends on the
+// embedding model, so the default follows the configured model (memoryConfig.maxDistance, MEMORY_MAX_DISTANCE).
+export const DEFAULT_MAX_DISTANCE = memoryConfig.maxDistance;
+// Lessons are general by nature and may sit a little further from any one query.
+const LESSON_MAX_DISTANCE = DEFAULT_MAX_DISTANCE + 0.05;
 const CANDIDATES = 300;
 const MAX_RULES = 30;
 const RELEVANT_LESSONS = 3;
@@ -52,7 +54,7 @@ const clamp = (value: number, min: number, max: number): number => Math.min(Math
 
 export async function searchNotes(input: SearchInput): Promise<SearchHit[]> {
     if (!input.spaces.length || !input.query.trim()) return [];
-    const embedding = input.embedding ?? (await embedder.embed([input.query]))[0];
+    const embedding = input.embedding ?? (await embedder.embed([input.query], 'query'))[0];
     const terms = queryTerms(input.query);
     const params = new Params();
     const e = params.add(toVector(embedding));
@@ -127,6 +129,8 @@ export const mostSpecificRules = (rules: NoteRow[], spaces: SpaceRow[]): NoteRow
 
 export interface RecallInput extends Moment {
     spaces: SpaceRow[];
+    // Who is asking, so the prompt can say which notes they wrote themselves and which others did.
+    caller?: string;
     query: string;
     kinds?: string[] | null;
     labels?: string[] | null;
@@ -152,7 +156,7 @@ export interface Recall {
 export async function recall(input: RecallInput): Promise<Recall> {
     const withPrompt = input.withPrompt !== false;
     if (!input.spaces.length) return { prompt: null, rules: [], hits: [], lessons: [], connections: [] };
-    const [[embedding], named] = await Promise.all([embedder.embed([input.query]), matchEntities(input.spaces, queryTerms(input.query).names)]);
+    const [[embedding], named] = await Promise.all([embedder.embed([input.query], 'query'), matchEntities(input.spaces, queryTerms(input.query).names)]);
     const [linked, links] = named.length
         ? await Promise.all([neighbours(input.spaces, named, undefined, input), linksOf(input.spaces, named.slice(0, CONNECTED_NAMES), CONNECTION_LINKS, input)])
         : [[], []];
@@ -171,5 +175,5 @@ export async function recall(input: RecallInput): Promise<Recall> {
     ]);
     const rules = mostSpecificRules(allRules, input.spaces);
     const connections = withPrompt ? groupConnections(named, links) : [];
-    return { prompt: withPrompt ? renderPrompt({ rules, hits, lessons, connections }) : null, rules, hits, lessons, connections };
+    return { prompt: withPrompt ? renderPrompt({ rules, hits, lessons, connections, caller: input.caller }) : null, rules, hits, lessons, connections };
 }

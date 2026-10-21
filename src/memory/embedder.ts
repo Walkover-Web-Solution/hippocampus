@@ -1,13 +1,15 @@
 import { createHash } from 'crypto';
 import { ApiError } from '../error/api-error';
 import { Encoder } from '../service/encoder';
+import { EmbeddingKind } from '../service/utility';
 import { memoryConfig } from './config';
 import { Embedder } from './types';
 import { addTokens } from './usage';
 
 /**
  * Embeddings for memory chunks and queries, through the same Encoder the RAG routes use, so any dense model it
- * knows works here: OpenAI's, or a FastEmbed model served by the sidecar.
+ * knows works here: by default Google's EmbeddingGemma in the FastEmbed sidecar (local, no key), or OpenAI's.
+ * Chunks are embedded as documents and queries as queries; the sidecar adds the prefixes a model was trained with.
  */
 const BATCH = 100;
 
@@ -18,13 +20,15 @@ class EncoderEmbedder implements Embedder {
 
     private readonly encoder = new Encoder();
 
-    async embed(texts: string[]): Promise<number[][]> {
+    async embed(texts: string[], kind: EmbeddingKind): Promise<number[][]> {
         if (!texts.length) return [];
         if (!this.encoder.isValid(this.model)) throw new ApiError(`MEMORY_EMBEDDING_MODEL "${this.model}" is not a model this server can run`, 500);
+        const known = this.encoder.getDimensions(this.model);
+        if (known && known !== this.dimensions) throw new ApiError(`MEMORY_EMBEDDING_DIMENSIONS is ${this.dimensions} but ${this.model} produces ${known}-dimensional vectors`, 500);
         const vectors: number[][] = [];
         for (let start = 0; start < texts.length; start += BATCH) {
             const batch = texts.slice(start, start + BATCH);
-            vectors.push(...await this.encoder.encode(batch, this.model));
+            vectors.push(...await this.encoder.encode(batch, this.model, kind));
             addTokens(batch.reduce((sum, text) => sum + text.length, 0) / 4);
         }
         if (vectors.length !== texts.length || vectors.some((vector) => !vector || vector.length !== this.dimensions)) {
@@ -41,7 +45,7 @@ export class FakeEmbedder implements Embedder {
 
     readonly dimensions = memoryConfig.embeddingDimensions;
 
-    async embed(texts: string[]): Promise<number[][]> {
+    async embed(texts: string[], _kind: EmbeddingKind): Promise<number[][]> {
         return texts.map((text) => {
             const vector = new Array<number>(this.dimensions).fill(0);
             const words = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];

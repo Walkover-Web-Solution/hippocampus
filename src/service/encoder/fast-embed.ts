@@ -1,5 +1,5 @@
 import axios from "../../config/axios";
-import { IEncoder, ModelDetail } from "../utility";
+import { EmbeddingKind, IEncoder, ModelDetail } from "../utility";
 import { randomUUID } from 'crypto';
 const CONFIG = {
     MAX_BATCH_SIZE: 50,
@@ -8,7 +8,7 @@ const CONFIG = {
 };
 const EMBEDDING_SERVER = process.env.EMBEDDING_SERVER || 'http://127.0.0.1:8000';
 
-export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
+export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5", kind?: EmbeddingKind): Promise<number[][]> {
     try {
         const routingKey = `${model}:${randomUUID()}`;
         const sortedChunks: IndexedText[] = texts
@@ -19,7 +19,8 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
         for (const batch of batches) {
             const response = await axios.post(`${EMBEDDING_SERVER}/embed`, {
                 model: model,
-                texts: batch.map(t => t.text)
+                texts: batch.map(t => t.text),
+                kind: kind
             }, {
                 headers: {
                     'X-Routing-Key': routingKey,
@@ -163,43 +164,56 @@ export class Reranker implements IEncoder {
 }
 
 export class FastEmbedEncoder implements IEncoder {
-    async encode(chunks: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
-        return generateEmbedding(chunks, model);
+    async encode(chunks: string[], model: string = "BAAI/bge-small-en-v1.5", kind?: EmbeddingKind): Promise<number[][]> {
+        return generateEmbedding(chunks, model, kind);
     }
 
     getModelDetail(model: string) {
         const modelDetails = new Map<string, ModelDetail>();
+        modelDetails.set("google/embeddinggemma-300m", {
+            name: "Google EmbeddingGemma 300M",
+            provider: "Hosted",
+            description: "Google's open multilingual embedding model (100+ languages, 2048 tokens), run locally in ONNX; queries and documents get their prefixes automatically.",
+            latency: "Low",
+            dimensions: 768
+        });
+
         modelDetails.set("BAAI/bge-small-en-v1.5", {
             name: "BAAI BGE Small EN v1.5",
             provider: "Hosted",
             description: "A smaller version of Baidu's General Embedding model optimized for English text.",
-            latency: "Low"
+            latency: "Low",
+            dimensions: 384
         });
 
         modelDetails.set("BAAI/bge-large-en-v1.5", {
             name: "BAAI BGE Large EN v1.5",
             provider: "Hosted",
             description: "A larger version of Baidu's General Embedding model optimized for English text, providing higher accuracy.",
-            latency: "Medium"
+            latency: "Medium",
+            dimensions: 1024
         });
 
         modelDetails.set("sentence-transformers/all-MiniLM-L6-v2", {
             name: "Sentence Transformers MiniLM L6 v2",
             provider: "Hosted",
             description: "A compact and efficient model from Sentence Transformers for generating sentence embeddings.",
-            latency: "Low"
+            latency: "Low",
+            dimensions: 384
         });
         modelDetails.set("intfloat/multilingual-e5-large", {
             name: "Intfloat Multilingual E5 Large",
             provider: "Hosted",
             description: "A large multilingual embedding model suitable for various languages.",
-            latency: "Medium"
+            latency: "Medium",
+            dimensions: 1024
         });
         modelDetails.set("jinaai/jina-embeddings-v2-base-code", {
             name: "Jina Embeddings v2 Base Code",
             provider: "Hosted",
             description: "An embedding model from Jina AI optimized for code and technical text.",
-            latency: "Low"
+            latency: "Low",
+            dimensions: 768
         });
         return modelDetails.get(model);
     }

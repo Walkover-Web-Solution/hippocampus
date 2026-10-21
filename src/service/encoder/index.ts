@@ -1,5 +1,6 @@
 import { FastEmbedEncoder, SparseEncoder, Reranker } from "./fast-embed";
 import { OpenAiEncoder } from "./openai";
+import { EmbeddingKind } from "../utility";
 
 export class Encoder {
     private states: { [key: string]: any };
@@ -10,6 +11,7 @@ export class Encoder {
         this.states = {
             'text-embedding-3-large': new OpenAiEncoder(),
             'text-embedding-3-small': new OpenAiEncoder(),
+            'google/embeddinggemma-300m': new FastEmbedEncoder(),
             'BAAI/bge-small-en-v1.5': new FastEmbedEncoder(),
             'BAAI/bge-large-en-v1.5': new FastEmbedEncoder(),
             'sentence-transformers/all-MiniLM-L6-v2': new FastEmbedEncoder(),
@@ -72,10 +74,17 @@ export class Encoder {
         return Object.keys(this.rerankerStates).includes(model);
     }
 
-    async encode(chunks: string[], model: string) {
+    // The vector size a dense model produces, when known; a wrong configured size is then caught before any data is written.
+    public getDimensions(model: string): number | undefined {
+        const encoder = this.states[model];
+        return encoder?.getModelDetail ? encoder.getModelDetail(model)?.dimensions : undefined;
+    }
+
+    // `kind` says whether the texts are queries or documents; models trained with prefixes need it.
+    async encode(chunks: string[], model: string, kind: EmbeddingKind = 'document') {
         const encoder = this.states[model];
         if (!encoder) throw new Error(`Encoder model ${model} not supported`);
-        return encoder.encode(chunks, model);
+        return encoder.encode(chunks, model, kind);
     }
 
     async encodeSparse(chunks: string[], model: string) {

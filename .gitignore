@@ -8,5 +8,6 @@ newrelic*
 GEMINI.md
 FEEDBACK.md
 venv
+fastembed/models
 main.cpython-*
 adapter_models

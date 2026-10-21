@@ -17,7 +17,7 @@ import {
 } from './store/notes';
 import { DEFAULT_TOP_K, MAX_TOP_K, recall } from './store/search';
 import { deleteSpace, ensureSpace, findSpace, listSpaces, resolveSpaces } from './store/spaces';
-import { FeedbackOutcome, Links, NOTE_KINDS, NoteRow, Source, SpaceRow, Tenant } from './types';
+import { Access, ExtractionSubject, FeedbackOutcome, Links, NOTE_KINDS, NoteRow, Source, SpaceRow, Tenant } from './types';
 
 /**
  * The six verbs an agent gets, over HTTP, as MCP tools and as function definitions: index, open, search, entity,
@@ -78,12 +78,13 @@ export const indexAfterWrite: IndexFn = async (note: NoteRow, links?: Links | nu
     }
 };
 
-const spaceOf = async (auth: MemoryAuth, name: unknown, access: 'read' | 'write'): Promise<SpaceRow | null> => {
+const spaceOf = async (auth: MemoryAuth, name: unknown, access: Access): Promise<SpaceRow | null> => {
     const space = auth.grants.require(normalizeSpace(name), access);
-    return access === 'write' ? ensureSpace(auth.tenant, space) : findSpace(auth.tenant, space);
+    // A space is created on its first write; a read of one that does not exist yet is simply empty.
+    return access === 'read' ? findSpace(auth.tenant, space) : ensureSpace(auth.tenant, space);
 };
 
-const spacesOf = (auth: MemoryAuth, names: unknown, access: 'read' | 'write'): Promise<SpaceRow[]> => {
+const spacesOf = (auth: MemoryAuth, names: unknown, access: Access): Promise<SpaceRow[]> => {
     const list = Array.isArray(names) ? names : (typeof names === 'string' && names ? [names] : undefined);
     return resolveSpaces(auth.tenant, auth.grants, list, access);
 };
@@ -136,6 +137,7 @@ export const memoryService = {
         const kinds = Array.isArray(input.kinds) ? input.kinds.map(normalizeKind) : (typeof input.kinds === 'string' ? [normalizeKind(input.kinds)] : null);
         const result = await recall({
             spaces,
+            caller: auth.caller,
             query,
             kinds,
             labels: normalizeLabels(input.labels),
@@ -180,13 +182,14 @@ export const memoryService = {
         const kind = input.kind !== undefined ? normalizeKind(input.kind) : undefined;
         const slot = kind === NOTE_KINDS.RULE && typeof input.slot === 'string' ? normalizeSlot(input.slot) : undefined;
         const path = input.path ? normalizePath(input.path) : (slot ? `rules/${slot}` : generatedPath(kind ?? NOTE_KINDS.NOTE, typeof input.title === 'string' && input.title ? input.title : body));
-        const space = await spaceOf(auth, input.space, 'write') as SpaceRow;
+        const space = await spaceOf(auth, input.space, 'append') as SpaceRow;
         const result = await writeNote(auth.caller, {
             space,
             path,
             body,
             title: typeof input.title === 'string' ? input.title.slice(0, 300) : (input.title === null ? null : undefined),
             kind,
+            onlyOwn: !auth.grants.can(space.name, 'write'),
             slot: slot === undefined && input.slot === null ? null : slot,
             labels: input.labels === undefined ? undefined : normalizeLabels(input.labels),
             validFrom: toDate(input.valid_from) ?? undefined,
@@ -209,9 +212,10 @@ export const memoryService = {
             throw new ApiError('Not saved: memory never keeps email addresses, phone numbers, card numbers or other long numbers. Send guard: false to save it anyway.', 400);
         }
         const path = input.path ? normalizePath(input.path) : null;
-        const space = await spaceOf(auth, input.space, 'write') as SpaceRow;
+        const space = await spaceOf(auth, input.space, 'append') as SpaceRow;
         const result = await remember(auth.caller, {
             space,
+            canReplace: auth.grants.can(space.name, 'write'),
             kind: typeof input.kind === 'string' ? input.kind : NOTE_KINDS.FACT,
             text,
             title: typeof input.title === 'string' ? input.title.slice(0, 300) : undefined,
@@ -231,7 +235,7 @@ export const memoryService = {
     // edit(path, ops, if_version): change part of a note in place; each edit is its own version.
     async edit(auth: MemoryAuth, input: Record<string, unknown>) {
         const path = normalizePath(input.path);
-        const space = await spaceOf(auth, input.space, 'write') as SpaceRow;
+        const space = await spaceOf(auth, input.space, 'append') as SpaceRow;
         const current = await findNote(space, path);
         if (!current) throw new ApiError(`No note at "${space.name}/${path}"`, 404);
         const ops = Array.isArray(input.ops) ? input.ops as EditOp[] : [];
@@ -252,6 +256,7 @@ export const memoryService = {
             validTo: toDate(input.valid_to),
             source: toSource(input.source),
             ifVersion: typeof input.if_version === 'number' ? input.if_version : undefined,
+            onlyOwn: !auth.grants.can(space.name, 'write'),
             change: metadataOnly ? 'edit-metadata' : 'edit',
         });
         const indexed = metadataOnly ? 'indexed' : await indexAfterWrite(result.note, toLinks(input.entities, input.relations));
@@ -260,8 +265,9 @@ export const memoryService = {
 
     // learn(messages, space): extraction as one writer; what is learned lands as notes like any other.
     async learn(auth: MemoryAuth, input: Record<string, unknown>) {
-        const space = await spaceOf(auth, input.space, 'write') as SpaceRow;
-        const sharedSpace = input.shared_space ? await spaceOf(auth, input.shared_space, 'write') : null;
+        const space = await spaceOf(auth, input.space, 'append') as SpaceRow;
+        const sharedSpace = input.shared_space ? await spaceOf(auth, input.shared_space, 'append') : null;
+        const writeSpaces = [space, sharedSpace].filter((s): s is SpaceRow => Boolean(s) && auth.grants.can((s as SpaceRow).name, 'write')).map((s) => s.name);
         let text: string;
         let rulesAllowed = input.rules_allowed !== false;
         if (Array.isArray(input.messages)) {
@@ -275,22 +281,27 @@ export const memoryService = {
             throw new ApiError('"messages" or "text" is required', 400);
         }
         const source = toSource(input.source) ?? null;
+        const subject = toSubject(input.subject);
+        // The product's own instructions on what is worth keeping, handed to the extractor as data: they steer
+        // relevance, never the guardrails (the never-save list, who may set rules).
+        const instructions = typeof input.instructions === 'string' && input.instructions.trim() ? input.instructions.trim() : null;
+        if (instructions && instructions.length > 4000) throw new ApiError('"instructions" is too long (at most 4000 characters)', 400);
         if (input.async === true) {
             try {
                 await publishMemoryJob({
-                    type: 'learn', tenant: auth.tenant, caller: auth.caller, space: space.name, shared_space: sharedSpace?.name ?? null, text, source, rules_allowed: rulesAllowed,
+                    type: 'learn', tenant: auth.tenant, caller: auth.caller, space: space.name, shared_space: sharedSpace?.name ?? null, text, source, rules_allowed: rulesAllowed, subject, instructions, write_spaces: writeSpaces,
                 });
                 return { queued: true };
             } catch (error: any) {
                 logger.error(`[MEMORY](queue) learn job not published, learning inline: ${error?.message}`);
             }
         }
-        const result = await learn(auth.caller, { space, sharedSpace, text, source, rulesAllowed }, indexAfterWrite);
+        const result = await learn(auth.caller, { space, sharedSpace, text, source, rulesAllowed, subject, instructions, canReplace: (s) => writeSpaces.includes(s.name) }, indexAfterWrite);
         return { queued: false, changes: result.changes.map(presentChange), skipped: result.skipped, failed: result.failed };
     },
 
     async feedback(auth: MemoryAuth, input: Record<string, unknown>) {
-        const space = await spaceOf(auth, input.space, 'write') as SpaceRow;
+        const space = await spaceOf(auth, input.space, 'append') as SpaceRow;
         const outcome = input.outcome as FeedbackOutcome;
         if (!['good', 'bad', 'corrected'].includes(outcome)) throw new ApiError('"outcome" must be good, bad or corrected', 400);
         if (typeof input.task !== 'string' || typeof input.output !== 'string' || !input.task.trim() || !input.output.trim()) throw new ApiError('"task" and "output" are required', 400);
@@ -349,12 +360,13 @@ export const memoryService = {
         }
         const title = typeof input.title === 'string' ? input.title.slice(0, 300) : (url ? url.slice(0, 300) : null);
         const path = input.path ? normalizePath(input.path) : generatedPath(NOTE_KINDS.DOC, title ?? content ?? 'document');
-        const space = await spaceOf(auth, input.space, 'write') as SpaceRow;
+        const space = await spaceOf(auth, input.space, 'append') as SpaceRow;
         const result = await writeNote(auth.caller, {
             space,
             path,
             body: content ?? '',
             title,
+            onlyOwn: !auth.grants.can(space.name, 'write'),
             kind: typeof input.kind === 'string' ? normalizeKind(input.kind) : NOTE_KINDS.DOC,
             labels: input.labels === undefined ? undefined : normalizeLabels(input.labels),
             source: toSource(input.source) ?? (url ? { type: 'url', id: url } : undefined),
@@ -395,10 +407,19 @@ export async function loadDocument(noteId: string, url: string) {
     }
 }
 
+// What a space is about, from the request: a person unless the product says a thing, which must be named.
+const toSubject = (value: unknown): ExtractionSubject | null => {
+    if (!value || typeof value !== 'object') return null;
+    const { kind, name } = value as { kind?: unknown; name?: unknown };
+    const trimmed = typeof name === 'string' && name.trim() ? name.trim() : null;
+    if (kind === 'thing' && !trimmed) throw new ApiError('"subject.name" is required when subject.kind is "thing"', 400);
+    return { kind: kind === 'thing' ? 'thing' : 'person', name: trimmed };
+};
+
 // Learning queued by a request, run by the consumer.
 export async function learnFromJob(job: Extract<MemoryJob, { type: 'learn' }>) {
     const tenant: Tenant = job.tenant;
     const space = await ensureSpace(tenant, job.space);
     const sharedSpace = job.shared_space ? await ensureSpace(tenant, job.shared_space) : null;
-    return learn(job.caller, { space, sharedSpace, text: job.text, source: job.source ?? null, rulesAllowed: job.rules_allowed !== false }, indexAfterWrite);
+    return learn(job.caller, { space, sharedSpace, text: job.text, source: job.source ?? null, rulesAllowed: job.rules_allowed !== false, subject: job.subject ?? null, instructions: job.instructions ?? null, canReplace: (s) => !job.write_spaces || job.write_spaces.includes(s.name) }, indexAfterWrite);
 }

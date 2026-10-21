@@ -131,7 +131,7 @@ export class Doc {
         const chunkTexts = this.chunks.map((chunk) => chunk?.vectorSource || chunk.data);
         const encoder = new Encoder();
         const startTime = performance.now();
-        const encodingTasks = [encoder.encode(chunkTexts, denseModel)];
+        const encodingTasks = [encoder.encode(chunkTexts, denseModel, 'document')];
         (sparseModel) ? encodingTasks.push(encoder.encodeSparse(chunkTexts, sparseModel)) : encodingTasks.push(new Promise((resolve) => resolve(undefined)));
         (rerankerModel) ? encodingTasks.push(encoder.encodeReranker(chunkTexts, rerankerModel)) : encodingTasks.push(new Promise((resolve) => resolve(undefined)));
         const [denseEmbedding, sparseEmbedding, lateInteractionEmbedding] = await Promise.all(encodingTasks);

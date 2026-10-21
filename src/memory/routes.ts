@@ -114,6 +114,9 @@ const learnSchema = z.object({
     text: text(20000).optional(),
     source,
     rules_allowed: z.boolean().optional(),
+    // What the space is about: the person speaking (named, so a memory they share says who), or a thing such as an
+    // article or an account, which never sets rules and is named in every memory.
+    subject: z.object({ kind: z.enum(['person', 'thing']).optional(), name: z.string().max(120).optional() }).optional(),
     async: z.boolean().optional(),
 }).refine((value) => value.messages || value.text, { message: '"messages" or "text" is required' });
 

@@ -31,7 +31,7 @@ export async function indexVersion(versionId: string, given?: Links | null): Pro
     if (!row) return false;
     const body = row.body.trim();
     const chunks = chunkText(body);
-    const embeddings = chunks.length ? await embedder.embed(chunks.map((chunk) => chunk.text)) : [];
+    const embeddings = chunks.length ? await embedder.embed(chunks.map((chunk) => chunk.text), 'document') : [];
     const summary = chunks.length > 1 ? await models.summarize(row.title, body) : firstSentence(body);
     // Lessons are general and name nothing; an empty body has nothing to link.
     const links = given ?? (row.kind === NOTE_KINDS.LESSON || !body
