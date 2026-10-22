@@ -18,7 +18,7 @@ RUN apt-get install -y libasound2 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1
 
 # 2. Install Node.js Dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # 3. Setup Python Environment
 # We create the venv exactly where your PM2 config expects it: ./fastembed/venv
