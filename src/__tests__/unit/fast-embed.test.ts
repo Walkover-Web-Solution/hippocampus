@@ -1,5 +1,5 @@
 import axios from '../../config/axios';
-import { generateEmbedding } from '../../service/encoder/fast-embed';
+import { generateEmbedding, generateLateInteractionEmbedding, generateSparseEmbedding, requiresIdf } from '../../service/encoder/fast-embed';
 
 jest.mock('../../config/axios', () => ({
     __esModule: true,
@@ -39,5 +39,44 @@ describe('generateEmbedding', () => {
 
         expect(result).toHaveLength(2);
         expect(mockPost.mock.calls.every((call) => call[1].input_type === 'document')).toBe(true);
+    });
+});
+
+describe('generateSparseEmbedding / generateLateInteractionEmbedding', () => {
+    const mockPost = axios.post as jest.Mock;
+
+    it('should send input_type to /sparse-embed', async () => {
+        mockPost.mockResolvedValue({ data: { embeddings: [{ '12': 1.0 }] } });
+
+        const result = await generateSparseEmbedding(['refund policy'], 'Qdrant/bm25', 'query');
+
+        expect(mockPost).toHaveBeenCalledWith(
+            expect.stringContaining('/sparse-embed'),
+            { model: 'Qdrant/bm25', texts: ['refund policy'], input_type: 'query' },
+            expect.anything()
+        );
+        expect(result).toEqual([{ indices: [12], values: [1.0] }]);
+    });
+
+    it('should send input_type to /late-interaction-embed', async () => {
+        mockPost.mockResolvedValue({ data: { embeddings: [[[0.1, 0.2]]] } });
+
+        await generateLateInteractionEmbedding(['refund policy'], 'lightonai/mLateOn', 'query');
+
+        expect(mockPost).toHaveBeenCalledWith(
+            expect.stringContaining('/late-interaction-embed'),
+            { model: 'lightonai/mLateOn', texts: ['refund policy'], input_type: 'query' },
+            expect.anything()
+        );
+    });
+});
+
+describe('requiresIdf', () => {
+    it('should be true only for sparse models that rely on Qdrant IDF', () => {
+        expect(requiresIdf('Qdrant/bm25')).toBe(true);
+        expect(requiresIdf('Qdrant/minicoil-v1')).toBe(true);
+        expect(requiresIdf('prithivida/Splade_PP_en_v1')).toBe(false);
+        expect(requiresIdf('opensearch-project/opensearch-neural-sparse-encoding-doc-v3-gte')).toBe(false);
+        expect(requiresIdf(undefined)).toBe(false);
     });
 });

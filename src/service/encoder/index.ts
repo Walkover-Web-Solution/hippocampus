@@ -22,11 +22,13 @@ export class Encoder {
         this.sparseStates = {
             'prithivida/Splade_PP_en_v1': new SparseEncoder(),
             'Qdrant/bm25': new SparseEncoder(),
+            'opensearch-project/opensearch-neural-sparse-encoding-doc-v3-gte': new SparseEncoder(),
         };
         this.rerankerStates = {
             'colbert-ir/colbertv2.0': new Reranker(),
             'jinaai/jina-colbert-v2': new Reranker(),
             'answerdotai/answerai-colbert-small-v1': new Reranker(),
+            'lightonai/mLateOn': new Reranker(),
         };
     }
 
@@ -81,16 +83,16 @@ export class Encoder {
         return encoder.encode(chunks, model, inputType);
     }
 
-    async encodeSparse(chunks: string[], model: string) {
+    async encodeSparse(chunks: string[], model: string, inputType?: InputType) {
         const encoder = this.sparseStates[model];
         if (!encoder) throw new Error(`Sparse encoder model ${model} not supported`);
-        return encoder.encode(chunks, model);
+        return encoder.encode(chunks, model, inputType);
     }
 
-    async encodeReranker(chunks: string[], model: string) {
+    async encodeReranker(chunks: string[], model: string, inputType?: InputType) {
         const encoder = this.rerankerStates[model];
         if (!encoder) throw new Error(`Reranker model ${model} not supported`);
-        return encoder.encode(chunks, model);
+        return encoder.encode(chunks, model, inputType);
     }
 
 }

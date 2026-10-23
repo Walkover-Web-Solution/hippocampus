@@ -4,7 +4,7 @@ import { MongoStorage, QdrantStorage } from "../service/document";
 import rabbitmq from "../config/rabbitmq";
 import producer from "../config/producer";
 import collectionService from "../service/collection";
-import { generateEmbedding, generateSparseEmbedding } from "../service/encoder/fast-embed";
+import { generateEmbedding, generateSparseEmbedding, requiresIdf } from "../service/encoder/fast-embed";
 import { denseSearch, hybridSearch, insert } from "../service/qdrant";
 import feedbackService from "../service/feedback";
 import { generateContentId } from "../service/utility";
@@ -35,7 +35,7 @@ async function processFeedback(message: any, channel: Channel) {
         if (!denseModel) throw new Error("Dense model is not defined for the collection.");
         const sparseModel = collection.settings.sparseModel;
         const denseEmbedding = await generateEmbedding([userQuery], denseModel, "query");
-        const sparseEmbedding = sparseModel ? await generateSparseEmbedding([userQuery], sparseModel) : null;
+        const sparseEmbedding = sparseModel ? await generateSparseEmbedding([userQuery], sparseModel, "query") : null;
         // Step 3: Check for similar query is in Qdrant
         const feedbackCollectionName = `feedback_${collectionId}`;
         // TODO : Maybe we can update the feedback for all the queries with score > 0.9 not just one
@@ -57,7 +57,7 @@ async function processFeedback(message: any, channel: Channel) {
         if (!feedback) {
             feedbackId = generateContentId(userQuery, collectionId, ownerId);
             const vector = { dense: denseEmbedding[0], sparse: sparseEmbedding ? sparseEmbedding[0] : undefined };
-            await insert(feedbackCollectionName, [{ id: feedbackId, vector: vector, payload: { collectionId, ownerId } }]);
+            await insert(feedbackCollectionName, [{ id: feedbackId, vector: vector, payload: { collectionId, ownerId } }], { sparseIdf: requiresIdf(sparseModel) });
             await feedbackService.createFeedback(
                 feedbackId,
                 collectionId,

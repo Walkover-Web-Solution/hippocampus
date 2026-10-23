@@ -41,7 +41,7 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
     }
 }
 
-export async function generateSparseEmbedding(texts: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<{ indices: number[], values: number[] }[]> {
+export async function generateSparseEmbedding(texts: string[], model: string = "prithivida/splade-pp-en-v1", inputType?: InputType): Promise<{ indices: number[], values: number[] }[]> {
     try {
         const routingKey = `${model}:${randomUUID()}`;
         const sortedChunks: IndexedText[] = texts
@@ -52,7 +52,8 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
         for (const batch of batches) {
             const response = await axios.post(`${EMBEDDING_SERVER}/sparse-embed`, {
                 model: model,
-                texts: batch.map(t => t.text)
+                texts: batch.map(t => t.text),
+                input_type: inputType
             }, {
                 headers: {
                     'X-Routing-Key': routingKey,
@@ -79,7 +80,7 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
 }
 
 
-export async function generateLateInteractionEmbedding(texts: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[][][]> {
+export async function generateLateInteractionEmbedding(texts: string[], model: string = "colbert-ir/colbertv2.0", inputType?: InputType): Promise<number[][][]> {
 
     try {
         const routingKey = `${model}:${randomUUID()}`;
@@ -91,7 +92,8 @@ export async function generateLateInteractionEmbedding(texts: string[], model: s
         for (const batch of batches) {
             const response = await axios.post(`${EMBEDDING_SERVER}/late-interaction-embed`, {
                 model: model,
-                texts: batch.map(t => t.text)
+                texts: batch.map(t => t.text),
+                input_type: inputType
             }, {
                 headers: {
                     'X-Routing-Key': routingKey,
@@ -112,9 +114,20 @@ export async function generateLateInteractionEmbedding(texts: string[], model: s
     }
 }
 
+// Sparse models whose vectors rely on Qdrant applying IDF at search time
+const SPARSE_MODELS_REQUIRING_IDF = new Set([
+    "Qdrant/bm25",
+    "Qdrant/bm42-all-minilm-l6-v2-attentions",
+    "Qdrant/minicoil-v1",
+]);
+
+export function requiresIdf(model?: string): boolean {
+    return !!model && SPARSE_MODELS_REQUIRING_IDF.has(model);
+}
+
 export class SparseEncoder implements IEncoder {
-    async encode(chunks: string[], model: string = "Qdrant/bm25"): Promise<any> {
-        return generateSparseEmbedding(chunks, model);
+    async encode(chunks: string[], model: string = "Qdrant/bm25", inputType?: InputType): Promise<any> {
+        return generateSparseEmbedding(chunks, model, inputType);
     }
     getModelDetail(model: string) {
         const modelDetails = new Map<string, ModelDetail>();
@@ -130,13 +143,19 @@ export class SparseEncoder implements IEncoder {
             description: "Sparse model",
             latency: "Low"
         });
+        modelDetails.set("opensearch-project/opensearch-neural-sparse-encoding-doc-v3-gte", {
+            name: "OpenSearch Neural Sparse v3 GTE",
+            provider: "Hosted",
+            description: "Inference-free sparse model for English, queries are encoded without running the model",
+            latency: "Low"
+        });
         return modelDetails.get(model);
     }
 }
 
 export class Reranker implements IEncoder {
-    async encode(chunks: string[], model: string = "colbert-ir/colbertv2.0"): Promise<any> {
-        return generateLateInteractionEmbedding(chunks, model);
+    async encode(chunks: string[], model: string = "colbert-ir/colbertv2.0", inputType?: InputType): Promise<any> {
+        return generateLateInteractionEmbedding(chunks, model, inputType);
     }
 
     getModelDetail(model: string) {
@@ -158,6 +177,12 @@ export class Reranker implements IEncoder {
             provider: "Hosted",
             description: "Lightweight reranker",
             latency: "Low"
+        });
+        modelDetails.set("lightonai/mLateOn", {
+            name: "LightOn mLateOn",
+            provider: "Hosted",
+            description: "Multilingual reranker with 8K context, also good for code",
+            latency: "Medium"
         });
         return modelDetails.get(model);
     }

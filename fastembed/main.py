@@ -44,10 +44,14 @@ class TextPayload(BaseModel):
 class SparsePayload(BaseModel):
     texts: List[str]
     model: Optional[str] = "prithivida/Splade_PP_en_v1"
+    # Optional: "query" uses the model's query encoding (query_embed), anything else embeds as documents.
+    input_type: Optional[InputType] = None
 
 class LateInteractionPayload(BaseModel):
     texts: List[str]
     model: Optional[str] = "colbert-ir/colbertv2.0"
+    # Optional: "query" uses the model's query encoding (query_embed), anything else embeds as documents.
+    input_type: Optional[InputType] = None
 
 # Cache models to avoid reloading them on every request
 @lru_cache(maxsize=2)
@@ -97,7 +101,12 @@ def get_sparse_embeddings(payload: SparsePayload):
     """
     # Generate sparse embeddings for the texts in the payload.
     embed_model = get_sparse_embedding_model(payload.model)
-    embeddings = list(embed_model.embed(payload.texts))
+    # Queries are encoded differently from documents, e.g. BM25 gives every query token a weight of 1.0
+    # and inference-free SPLADE only looks up token weights instead of running the model.
+    if payload.input_type == "query":
+        embeddings = list(embed_model.query_embed(payload.texts))
+    else:
+        embeddings = list(embed_model.embed(payload.texts))
     
     # The list of sparse embeddings is automatically converted to a JSON response.
     return {"embeddings": [e.as_dict() for e in embeddings]}
@@ -109,7 +118,11 @@ def get_late_interaction_embeddings(payload: LateInteractionPayload):
     """
     # Generate ColBERT embeddings for the texts in the payload.
     embed_model = get_late_interaction_embedding_model(payload.model)
-    embeddings = list(embed_model.embed(payload.texts))
+    # ColBERT queries use the query marker token and are padded with [MASK] tokens (query augmentation).
+    if payload.input_type == "query":
+        embeddings = list(embed_model.query_embed(payload.texts))
+    else:
+        embeddings = list(embed_model.embed(payload.texts))
     
     # The list of ColBERT embeddings is automatically converted to a JSON response.
     return {"embeddings": [e.tolist() for e in embeddings]}
