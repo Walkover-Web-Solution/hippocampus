@@ -1,4 +1,4 @@
-import { ChangeStream, MongoClient, ObjectId, Timestamp } from 'mongodb';
+import { ChangeStream, Collection, Document, MongoClient, ObjectId, Timestamp } from 'mongodb';
 import mongoService from '../config/mongo';
 import { Readable, Transform, TransformCallback } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -11,32 +11,107 @@ import { JobPointer } from '../service/utility';
 import env from '../config/env';
 
 const dbName = env.MONGO_DB_NAME || 'hippocampus';
+// Replaying the gap left by a lost resume token is the right default; set to
+// "false" to bring the stream back up without re-publishing the missed window.
+const BACKFILL_ON_HISTORY_LOSS = process.env.RAG_SYNC_BACKFILL !== 'false';
+const BACKFILL_BATCH_SIZE = 100;
+
 export const ragSyncJob = async (jobName: string = "rag-sync") => {
-    const pointer = await JobPointer.getPointer(jobName);
     mongoService().on("connect", async (connection: MongoClient) => {
         const collection = connection.db(dbName).collection('resources');
-        const options: any = {
-            fullDocument: 'updateLookup',
-            batchSize: 1,
-            startAfter: (pointer) ? { "_data": pointer } : null
-        }
-        const stream = collection.watch([], options);
-        await handleResourceStream(stream, jobName);
+        await watchResources(connection, collection, jobName);
     })
 }
 
-async function handleResourceStream(changeStream: ChangeStream, jobName: string) {
+async function watchResources(connection: MongoClient, collection: Collection<Document>, jobName: string) {
+    const pointer = await JobPointer.getPointer(jobName);
+    const options: any = {
+        fullDocument: 'updateLookup',
+        batchSize: 1,
+        startAfter: (pointer) ? { "_data": pointer } : null
+    }
+    const stream = collection.watch([], options);
+    await handleResourceStream(stream, jobName, connection, collection, pointer);
+}
+
+// Mongo drops the resume point once it falls out of the oplog window. The token is
+// then permanently unusable, so retrying it only crash-loops the job.
+function isHistoryLost(error: any): boolean {
+    return error?.code === 286
+        || error?.codeName === 'ChangeStreamHistoryLost'
+        || error?.errorLabelSet?.has?.('NonResumableChangeStreamError') === true;
+}
+
+// A resume token is hex; bytes 1-4 after the leading type byte are the cluster time.
+export function resumeTokenTime(token?: string | null): Date | null {
+    if (!token || token.length < 10) return null;
+    const seconds = parseInt(token.slice(2, 10), 16);
+    return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000) : null;
+}
+
+async function handleResourceStream(changeStream: ChangeStream, jobName: string, connection: MongoClient, collection: Collection<Document>, pointer: string | null) {
     const readableStream: Readable = changeStream.stream();
     try {
         await pipeline(readableStream, new FilterOutNull(), new FilterUpdate(['metadata']), new MetaData(), new PublishEvent(), new Pointer(jobName).on("data", (data) => {
             logger.info(data?.fullDocument?._id);
         }));
     } catch (error: any) {
+        if (isHistoryLost(error)) {
+            const lostFrom = resumeTokenTime(pointer);
+            logger.error(`[${jobName}] resume point ${lostFrom ? `from ${lostFrom.toISOString()} ` : ''}is no longer in the oplog. Dropping the token and restarting the stream.`);
+            await JobPointer.clearPointer(jobName);
+            await changeStream.close().catch(() => undefined);
+            if (BACKFILL_ON_HISTORY_LOSS) {
+                await backfillSince(connection, collection, lostFrom, jobName);
+            } else {
+                logger.warn(`[${jobName}] RAG_SYNC_BACKFILL=false, skipping replay of the missed window.`);
+            }
+            return watchResources(connection, collection, jobName);
+        }
         console.error(error);
         // TODO: Send Notification
         await delay(5000);
         process.exit(1);
     }
+}
+
+// Resources changed while the stream was down never produced an event. Replay them
+// through the same transforms the live stream uses, skipping any that already have
+// chunks so a repeated recovery cannot duplicate them.
+async function backfillSince(connection: MongoClient, collection: Collection<Document>, since: Date | null, jobName: string) {
+    if (!since) {
+        logger.warn(`[${jobName}] lost token carried no usable timestamp, cannot replay the missed window.`);
+        return;
+    }
+    const chunks = connection.db(dbName).collection('chunks');
+    const cursor = collection.find({ updatedAt: { $gte: since }, isDeleted: { $ne: true } }).sort({ updatedAt: 1 });
+    let batch: Document[] = [];
+    let seen = 0;
+    let republished = 0;
+
+    const flush = async () => {
+        if (!batch.length) return;
+        const ids = batch.map((doc) => doc._id?.toString());
+        const alreadyChunked = new Set<string>(await chunks.distinct('resourceId', { resourceId: { $in: ids } }));
+        const missed = batch.filter((doc) => !alreadyChunked.has(doc._id?.toString()));
+        batch = [];
+        if (!missed.length) return;
+        await pipeline(
+            Readable.from(missed.map((fullDocument) => ({ operationType: 'insert', fullDocument }))),
+            new MetaData(),
+            new PublishEvent(),
+            async function (source: AsyncIterable<any>) { for await (const _ of source) { /* drain */ } }
+        );
+        republished += missed.length;
+    };
+
+    for await (const doc of cursor) {
+        seen++;
+        batch.push(doc);
+        if (batch.length >= BACKFILL_BATCH_SIZE) await flush();
+    }
+    await flush();
+    logger.warn(`[${jobName}] replayed ${republished} of ${seen} resources changed since ${since.toISOString()}.`);
 }
 
 

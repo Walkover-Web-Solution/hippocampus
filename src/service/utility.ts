@@ -78,7 +78,10 @@ export class JobPointer {
         return pointer || null;
     }
     static async setPointer(jobName: string, pointer: string) {
-        redis.set(pointerKey(jobName), pointer);
+        await redis.set(pointerKey(jobName), pointer);
+    }
+    static async clearPointer(jobName: string) {
+        await redis.del(pointerKey(jobName));
     }
 }
 
