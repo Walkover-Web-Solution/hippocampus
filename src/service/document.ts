@@ -6,7 +6,8 @@ import ChunkService from "../service/chunk";
 import mongoose from "mongoose";
 import { IEncoder, generateContentId } from "./utility";
 import { Encoder } from "./encoder";
-import { generateSparseEmbedding } from "./encoder/fast-embed";
+import { generateSparseEmbedding, requiresIdf } from "./encoder/fast-embed";
+import collectionService from "./collection";
 import { deletePoints, insert } from "./qdrant";
 import { v4 as uuidv4 } from 'uuid';
 import producer from "../config/producer";
@@ -131,9 +132,9 @@ export class Doc {
         const chunkTexts = this.chunks.map((chunk) => chunk?.vectorSource || chunk.data);
         const encoder = new Encoder();
         const startTime = performance.now();
-        const encodingTasks = [encoder.encode(chunkTexts, denseModel)];
-        (sparseModel) ? encodingTasks.push(encoder.encodeSparse(chunkTexts, sparseModel)) : encodingTasks.push(new Promise((resolve) => resolve(undefined)));
-        (rerankerModel) ? encodingTasks.push(encoder.encodeReranker(chunkTexts, rerankerModel)) : encodingTasks.push(new Promise((resolve) => resolve(undefined)));
+        const encodingTasks = [encoder.encode(chunkTexts, denseModel, "document")];
+        (sparseModel) ? encodingTasks.push(encoder.encodeSparse(chunkTexts, sparseModel, "document")) : encodingTasks.push(new Promise((resolve) => resolve(undefined)));
+        (rerankerModel) ? encodingTasks.push(encoder.encodeReranker(chunkTexts, rerankerModel, "document")) : encodingTasks.push(new Promise((resolve) => resolve(undefined)));
         const [denseEmbedding, sparseEmbedding, lateInteractionEmbedding] = await Promise.all(encodingTasks);
         const embeddings = {
             denseVectors: denseEmbedding,
@@ -255,7 +256,9 @@ export class QdrantStorage implements Storage {
         // Insert points into Qdrant based on their collectionId
         for (const collectionId in collectionMap) {
             const collectionName = `${collectionId}`;
-            await insert(collectionName, collectionMap[collectionId] as any);
+            const hasSparse = collectionMap[collectionId].some((point) => point.vector.sparse);
+            const sparseModel = hasSparse ? (await collectionService.getCollectionById(collectionId))?.settings?.sparseModel : undefined;
+            await insert(collectionName, collectionMap[collectionId] as any, { sparseIdf: requiresIdf(sparseModel) });
         }
     }
 

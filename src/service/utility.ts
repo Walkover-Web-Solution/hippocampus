@@ -92,8 +92,11 @@ export interface ContentLoader {
 
 
 export type ModelDetail = { name: string; provider: string; description: string; latency: string; }
+// Whether the text is a search query or a document being indexed. Models that need
+// different prompts for each (e.g. EmbeddingGemma) use it; others ignore it.
+export type InputType = "query" | "document";
 export interface IEncoder {
-    encode(chunks: string[], model?: string): Promise<any>;
+    encode(chunks: string[], model?: string, inputType?: InputType): Promise<any>;
     getModelDetail(model: string): ModelDetail | undefined;
 }
 

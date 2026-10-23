@@ -73,7 +73,12 @@ export interface QdrantPoint {
     payload?: Record<string, any>;
 }
 
-export async function insert(collectionName: string, points: Array<QdrantPoint>) {
+export interface InsertOptions {
+    // Apply IDF to the sparse vector at search time (needed for BM25-style models)
+    sparseIdf?: boolean;
+}
+
+export async function insert(collectionName: string, points: Array<QdrantPoint>, options: InsertOptions = {}) {
     const collection = await qdrantClient.collectionExists(collectionName);
     if (!collection.exists) {
         const firstVector = points[0].vector;
@@ -100,7 +105,7 @@ export async function insert(collectionName: string, points: Array<QdrantPoint>)
 
         const config: any = { vectors: vectorsConfig };
         if (firstVector.sparse) {
-            config.sparse_vectors = { sparse: {} };
+            config.sparse_vectors = { sparse: options.sparseIdf ? { modifier: 'idf' } : {} };
         }
         // Scalar Quantization config
         // config.quantization_config = {
