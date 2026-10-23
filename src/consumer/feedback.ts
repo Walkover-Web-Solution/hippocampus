@@ -34,7 +34,7 @@ async function processFeedback(message: any, channel: Channel) {
         const denseModel = collection.settings.denseModel;
         if (!denseModel) throw new Error("Dense model is not defined for the collection.");
         const sparseModel = collection.settings.sparseModel;
-        const denseEmbedding = await generateEmbedding([userQuery], denseModel);
+        const denseEmbedding = await generateEmbedding([userQuery], denseModel, "query");
         const sparseEmbedding = sparseModel ? await generateSparseEmbedding([userQuery], sparseModel) : null;
         // Step 3: Check for similar query is in Qdrant
         const feedbackCollectionName = `feedback_${collectionId}`;

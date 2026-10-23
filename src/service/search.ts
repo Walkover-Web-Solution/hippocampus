@@ -30,7 +30,7 @@ export async function search(query: string, collectionId: string, options?: Sear
     const sparseModel = collection?.settings?.sparseModel;
     const rerankerModel = collection?.settings?.rerankerModel;
 
-    const denseEmbeddingPromise = denseModel ? encoder.encode([query], denseModel) : Promise.resolve([]);
+    const denseEmbeddingPromise = denseModel ? encoder.encode([query], denseModel, "query") : Promise.resolve([]);
     const sparseEmbeddingPromise = sparseModel ? encoder.encodeSparse([query], sparseModel) : Promise.resolve(null);
     const rerankerEmbeddingPromise = rerankerModel ? encoder.encodeReranker([query], rerankerModel) : Promise.resolve(null);
 

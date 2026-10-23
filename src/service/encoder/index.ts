@@ -1,5 +1,6 @@
 import { FastEmbedEncoder, SparseEncoder, Reranker } from "./fast-embed";
 import { OpenAiEncoder } from "./openai";
+import { InputType } from "../utility";
 
 export class Encoder {
     private states: { [key: string]: any };
@@ -15,6 +16,8 @@ export class Encoder {
             'sentence-transformers/all-MiniLM-L6-v2': new FastEmbedEncoder(),
             'intfloat/multilingual-e5-large': new FastEmbedEncoder(),
             'jinaai/jina-embeddings-v2-base-code': new FastEmbedEncoder(),
+            'google/embeddinggemma-300m': new FastEmbedEncoder(),
+            'Qwen/Qwen3-Embedding-0.6B-Q': new FastEmbedEncoder(),
         };
         this.sparseStates = {
             'prithivida/Splade_PP_en_v1': new SparseEncoder(),
@@ -72,10 +75,10 @@ export class Encoder {
         return Object.keys(this.rerankerStates).includes(model);
     }
 
-    async encode(chunks: string[], model: string) {
+    async encode(chunks: string[], model: string, inputType?: InputType) {
         const encoder = this.states[model];
         if (!encoder) throw new Error(`Encoder model ${model} not supported`);
-        return encoder.encode(chunks, model);
+        return encoder.encode(chunks, model, inputType);
     }
 
     async encodeSparse(chunks: string[], model: string) {

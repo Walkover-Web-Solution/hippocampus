@@ -1,5 +1,5 @@
 import axios from "../../config/axios";
-import { IEncoder, ModelDetail } from "../utility";
+import { IEncoder, InputType, ModelDetail } from "../utility";
 import { randomUUID } from 'crypto';
 const CONFIG = {
     MAX_BATCH_SIZE: 50,
@@ -8,7 +8,7 @@ const CONFIG = {
 };
 const EMBEDDING_SERVER = process.env.EMBEDDING_SERVER || 'http://127.0.0.1:8000';
 
-export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
+export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5", inputType?: InputType): Promise<number[][]> {
     try {
         const routingKey = `${model}:${randomUUID()}`;
         const sortedChunks: IndexedText[] = texts
@@ -19,7 +19,8 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
         for (const batch of batches) {
             const response = await axios.post(`${EMBEDDING_SERVER}/embed`, {
                 model: model,
-                texts: batch.map(t => t.text)
+                texts: batch.map(t => t.text),
+                input_type: inputType
             }, {
                 headers: {
                     'X-Routing-Key': routingKey,
@@ -163,8 +164,8 @@ export class Reranker implements IEncoder {
 }
 
 export class FastEmbedEncoder implements IEncoder {
-    async encode(chunks: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
-        return generateEmbedding(chunks, model);
+    async encode(chunks: string[], model: string = "BAAI/bge-small-en-v1.5", inputType?: InputType): Promise<number[][]> {
+        return generateEmbedding(chunks, model, inputType);
     }
 
     getModelDetail(model: string) {
@@ -200,6 +201,18 @@ export class FastEmbedEncoder implements IEncoder {
             provider: "Hosted",
             description: "An embedding model from Jina AI optimized for code and technical text.",
             latency: "Low"
+        });
+        modelDetails.set("google/embeddinggemma-300m", {
+            name: "Google EmbeddingGemma 300M",
+            provider: "Hosted",
+            description: "A multilingual (100+ languages) embedding model from Google with 2048 token context, strong on retrieval and code.",
+            latency: "Medium"
+        });
+        modelDetails.set("Qwen/Qwen3-Embedding-0.6B-Q", {
+            name: "Qwen3 Embedding 0.6B (int8)",
+            provider: "Hosted",
+            description: "A multilingual embedding model from Qwen with long context, highest accuracy among the hosted models.",
+            latency: "High"
         });
         return modelDetails.get(model);
     }

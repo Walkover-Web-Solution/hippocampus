@@ -2,18 +2,44 @@
 # Import necessary libraries, similar to how you'd use `require` in Node.js
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Literal, Optional
 from fastembed import TextEmbedding, SparseTextEmbedding, LateInteractionTextEmbedding
 from functools import lru_cache
 
 # Create an instance of the FastAPI app, like `const app = express();`
 app = FastAPI()
 
+InputType = Literal["query", "document"]
+
+# Prompt templates for models that expect different prefixes for queries and documents.
+# fastembed does not add these itself. Models that are not listed here are embedded as-is,
+# so existing collections keep producing the same vectors.
+PROMPT_TEMPLATES = {
+    "google/embeddinggemma-300m": {
+        "query": "task: search result | query: {text}",
+        "document": "title: none | text: {text}",
+    },
+    "Qwen/Qwen3-Embedding-0.6B": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:{text}",
+    },
+    "Qwen/Qwen3-Embedding-0.6B-Q": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:{text}",
+    },
+}
+
+def apply_prompt(texts: List[str], model_name: str, input_type: Optional[InputType]) -> List[str]:
+    template = PROMPT_TEMPLATES.get(model_name, {}).get(input_type) if input_type else None
+    if not template:
+        return texts
+    return [template.format(text=text) for text in texts]
+
 # This is a Pydantic model. It's used for request body validation.
 # Think of it like a schema definition with Joi or Zod.
 class TextPayload(BaseModel):
     texts: List[str]
     model: Optional[str] = "BAAI/bge-small-en-v1.5"
+    # Optional: "query" or "document". Only affects models listed in PROMPT_TEMPLATES.
+    input_type: Optional[InputType] = None
 
 class SparsePayload(BaseModel):
     texts: List[str]
@@ -57,7 +83,8 @@ def get_embeddings(payload: TextPayload):
     
     # Generate embeddings for the texts in the payload.
     embed_model = get_embedding_model(payload.model)
-    embeddings = list(embed_model.embed(payload.texts))
+    texts = apply_prompt(payload.texts, payload.model, payload.input_type)
+    embeddings = list(embed_model.embed(texts))
     
     # The list of embeddings is automatically converted to a JSON response.
     # FastAPI handles the `res.json()` part for you.
