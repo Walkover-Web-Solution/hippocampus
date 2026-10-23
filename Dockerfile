@@ -21,10 +21,14 @@ RUN npm ci
 
 # 3. Setup Python Environment
 # We create the venv exactly where your PM2 config expects it: ./fastembed/venv
+# fastembed >= 0.8.1 needs Python >= 3.10, but bullseye ships 3.9, so uv installs a
+# standalone Python 3.11 for the venv while the rest of the image stays unchanged.
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /bin/uv
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 WORKDIR /app/fastembed
 COPY fastembed/requirements.txt ./
-RUN python3 -m venv venv && \
-    ./venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN uv venv --python 3.11 venv && \
+    uv pip install --python venv/bin/python --no-cache -r requirements.txt
 
 # Return to root for building the app
 WORKDIR /app

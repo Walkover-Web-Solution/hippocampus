@@ -34,7 +34,7 @@ export class SemanticChunker {
             return sentences;
         }
 
-        const embeddings = await this.encoder.encode(sentences, this.denseModel);
+        const embeddings = await this.encoder.encode(sentences, this.denseModel, "document");
         const similarities = this.calculateSimilarities(embeddings);
         const breakpoints = this.findBreakpoints(similarities, 20);
         return this.groupSentencesIntoChunks(sentences, breakpoints);

@@ -1,5 +1,5 @@
 import axios from "../../config/axios";
-import { IEncoder, ModelDetail } from "../utility";
+import { IEncoder, InputType, ModelDetail } from "../utility";
 import { randomUUID } from 'crypto';
 const CONFIG = {
     MAX_BATCH_SIZE: 50,
@@ -8,7 +8,7 @@ const CONFIG = {
 };
 const EMBEDDING_SERVER = process.env.EMBEDDING_SERVER || 'http://127.0.0.1:8000';
 
-export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
+export async function generateEmbedding(texts: string[], model: string = "BAAI/bge-small-en-v1.5", inputType?: InputType): Promise<number[][]> {
     try {
         const routingKey = `${model}:${randomUUID()}`;
         const sortedChunks: IndexedText[] = texts
@@ -19,7 +19,8 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
         for (const batch of batches) {
             const response = await axios.post(`${EMBEDDING_SERVER}/embed`, {
                 model: model,
-                texts: batch.map(t => t.text)
+                texts: batch.map(t => t.text),
+                input_type: inputType
             }, {
                 headers: {
                     'X-Routing-Key': routingKey,
@@ -40,7 +41,7 @@ export async function generateEmbedding(texts: string[], model: string = "BAAI/b
     }
 }
 
-export async function generateSparseEmbedding(texts: string[], model: string = "prithivida/splade-pp-en-v1"): Promise<{ indices: number[], values: number[] }[]> {
+export async function generateSparseEmbedding(texts: string[], model: string = "prithivida/splade-pp-en-v1", inputType?: InputType): Promise<{ indices: number[], values: number[] }[]> {
     try {
         const routingKey = `${model}:${randomUUID()}`;
         const sortedChunks: IndexedText[] = texts
@@ -51,7 +52,8 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
         for (const batch of batches) {
             const response = await axios.post(`${EMBEDDING_SERVER}/sparse-embed`, {
                 model: model,
-                texts: batch.map(t => t.text)
+                texts: batch.map(t => t.text),
+                input_type: inputType
             }, {
                 headers: {
                     'X-Routing-Key': routingKey,
@@ -78,7 +80,7 @@ export async function generateSparseEmbedding(texts: string[], model: string = "
 }
 
 
-export async function generateLateInteractionEmbedding(texts: string[], model: string = "colbert-ir/colbertv2.0"): Promise<number[][][]> {
+export async function generateLateInteractionEmbedding(texts: string[], model: string = "colbert-ir/colbertv2.0", inputType?: InputType): Promise<number[][][]> {
 
     try {
         const routingKey = `${model}:${randomUUID()}`;
@@ -90,7 +92,8 @@ export async function generateLateInteractionEmbedding(texts: string[], model: s
         for (const batch of batches) {
             const response = await axios.post(`${EMBEDDING_SERVER}/late-interaction-embed`, {
                 model: model,
-                texts: batch.map(t => t.text)
+                texts: batch.map(t => t.text),
+                input_type: inputType
             }, {
                 headers: {
                     'X-Routing-Key': routingKey,
@@ -111,9 +114,20 @@ export async function generateLateInteractionEmbedding(texts: string[], model: s
     }
 }
 
+// Sparse models whose vectors rely on Qdrant applying IDF at search time
+const SPARSE_MODELS_REQUIRING_IDF = new Set([
+    "Qdrant/bm25",
+    "Qdrant/bm42-all-minilm-l6-v2-attentions",
+    "Qdrant/minicoil-v1",
+]);
+
+export function requiresIdf(model?: string): boolean {
+    return !!model && SPARSE_MODELS_REQUIRING_IDF.has(model);
+}
+
 export class SparseEncoder implements IEncoder {
-    async encode(chunks: string[], model: string = "Qdrant/bm25"): Promise<any> {
-        return generateSparseEmbedding(chunks, model);
+    async encode(chunks: string[], model: string = "Qdrant/bm25", inputType?: InputType): Promise<any> {
+        return generateSparseEmbedding(chunks, model, inputType);
     }
     getModelDetail(model: string) {
         const modelDetails = new Map<string, ModelDetail>();
@@ -129,13 +143,19 @@ export class SparseEncoder implements IEncoder {
             description: "Sparse model",
             latency: "Low"
         });
+        modelDetails.set("opensearch-project/opensearch-neural-sparse-encoding-doc-v3-gte", {
+            name: "OpenSearch Neural Sparse v3 GTE",
+            provider: "Hosted",
+            description: "Inference-free sparse model for English, queries are encoded without running the model",
+            latency: "Low"
+        });
         return modelDetails.get(model);
     }
 }
 
 export class Reranker implements IEncoder {
-    async encode(chunks: string[], model: string = "colbert-ir/colbertv2.0"): Promise<any> {
-        return generateLateInteractionEmbedding(chunks, model);
+    async encode(chunks: string[], model: string = "colbert-ir/colbertv2.0", inputType?: InputType): Promise<any> {
+        return generateLateInteractionEmbedding(chunks, model, inputType);
     }
 
     getModelDetail(model: string) {
@@ -158,13 +178,19 @@ export class Reranker implements IEncoder {
             description: "Lightweight reranker",
             latency: "Low"
         });
+        modelDetails.set("lightonai/mLateOn", {
+            name: "LightOn mLateOn",
+            provider: "Hosted",
+            description: "Multilingual reranker with 8K context, also good for code",
+            latency: "Medium"
+        });
         return modelDetails.get(model);
     }
 }
 
 export class FastEmbedEncoder implements IEncoder {
-    async encode(chunks: string[], model: string = "BAAI/bge-small-en-v1.5"): Promise<number[][]> {
-        return generateEmbedding(chunks, model);
+    async encode(chunks: string[], model: string = "BAAI/bge-small-en-v1.5", inputType?: InputType): Promise<number[][]> {
+        return generateEmbedding(chunks, model, inputType);
     }
 
     getModelDetail(model: string) {
@@ -200,6 +226,18 @@ export class FastEmbedEncoder implements IEncoder {
             provider: "Hosted",
             description: "An embedding model from Jina AI optimized for code and technical text.",
             latency: "Low"
+        });
+        modelDetails.set("google/embeddinggemma-300m", {
+            name: "Google EmbeddingGemma 300M",
+            provider: "Hosted",
+            description: "A multilingual (100+ languages) embedding model from Google with 2048 token context, strong on retrieval and code.",
+            latency: "Medium"
+        });
+        modelDetails.set("Qwen/Qwen3-Embedding-0.6B-Q", {
+            name: "Qwen3 Embedding 0.6B (int8)",
+            provider: "Hosted",
+            description: "A multilingual embedding model from Qwen with long context, highest accuracy among the hosted models.",
+            latency: "High"
         });
         return modelDetails.get(model);
     }

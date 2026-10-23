@@ -1,3 +1,5 @@
 fastapi
 uvicorn
-fastembed
+# 0.8.1+ is needed for google/embeddinggemma-300m and Qwen3-Embedding (requires Python >= 3.10).
+# Pinned because fastembed upgrades can change the vectors of existing models.
+fastembed==0.9.0
