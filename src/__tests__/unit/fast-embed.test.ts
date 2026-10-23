@@ -61,11 +61,11 @@ describe('generateSparseEmbedding / generateLateInteractionEmbedding', () => {
     it('should send input_type to /late-interaction-embed', async () => {
         mockPost.mockResolvedValue({ data: { embeddings: [[[0.1, 0.2]]] } });
 
-        await generateLateInteractionEmbedding(['refund policy'], 'lightonai/mLateOn', 'query');
+        await generateLateInteractionEmbedding(['refund policy'], 'colbert-ir/colbertv2.0', 'query');
 
         expect(mockPost).toHaveBeenCalledWith(
             expect.stringContaining('/late-interaction-embed'),
-            { model: 'lightonai/mLateOn', texts: ['refund policy'], input_type: 'query' },
+            { model: 'colbert-ir/colbertv2.0', texts: ['refund policy'], input_type: 'query' },
             expect.anything()
         );
     });
@@ -76,7 +76,6 @@ describe('requiresIdf', () => {
         expect(requiresIdf('Qdrant/bm25')).toBe(true);
         expect(requiresIdf('Qdrant/minicoil-v1')).toBe(true);
         expect(requiresIdf('prithivida/Splade_PP_en_v1')).toBe(false);
-        expect(requiresIdf('opensearch-project/opensearch-neural-sparse-encoding-doc-v3-gte')).toBe(false);
         expect(requiresIdf(undefined)).toBe(false);
     });
 });

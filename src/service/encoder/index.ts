@@ -17,18 +17,15 @@ export class Encoder {
             'intfloat/multilingual-e5-large': new FastEmbedEncoder(),
             'jinaai/jina-embeddings-v2-base-code': new FastEmbedEncoder(),
             'google/embeddinggemma-300m': new FastEmbedEncoder(),
-            'Qwen/Qwen3-Embedding-0.6B-Q': new FastEmbedEncoder(),
         };
         this.sparseStates = {
             'prithivida/Splade_PP_en_v1': new SparseEncoder(),
             'Qdrant/bm25': new SparseEncoder(),
-            'opensearch-project/opensearch-neural-sparse-encoding-doc-v3-gte': new SparseEncoder(),
         };
         this.rerankerStates = {
             'colbert-ir/colbertv2.0': new Reranker(),
             'jinaai/jina-colbert-v2': new Reranker(),
             'answerdotai/answerai-colbert-small-v1': new Reranker(),
-            'lightonai/mLateOn': new Reranker(),
         };
     }
 

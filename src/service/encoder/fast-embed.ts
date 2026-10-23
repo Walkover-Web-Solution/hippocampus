@@ -143,12 +143,6 @@ export class SparseEncoder implements IEncoder {
             description: "Sparse model",
             latency: "Low"
         });
-        modelDetails.set("opensearch-project/opensearch-neural-sparse-encoding-doc-v3-gte", {
-            name: "OpenSearch Neural Sparse v3 GTE",
-            provider: "Hosted",
-            description: "Inference-free sparse model for English, queries are encoded without running the model",
-            latency: "Low"
-        });
         return modelDetails.get(model);
     }
 }
@@ -177,12 +171,6 @@ export class Reranker implements IEncoder {
             provider: "Hosted",
             description: "Lightweight reranker",
             latency: "Low"
-        });
-        modelDetails.set("lightonai/mLateOn", {
-            name: "LightOn mLateOn",
-            provider: "Hosted",
-            description: "Multilingual reranker with 8K context, also good for code",
-            latency: "Medium"
         });
         return modelDetails.get(model);
     }
@@ -232,12 +220,6 @@ export class FastEmbedEncoder implements IEncoder {
             provider: "Hosted",
             description: "A multilingual (100+ languages) embedding model from Google with 2048 token context, strong on retrieval and code.",
             latency: "Medium"
-        });
-        modelDetails.set("Qwen/Qwen3-Embedding-0.6B-Q", {
-            name: "Qwen3 Embedding 0.6B (int8)",
-            provider: "Hosted",
-            description: "A multilingual embedding model from Qwen with long context, highest accuracy among the hosted models.",
-            latency: "High"
         });
         return modelDetails.get(model);
     }
