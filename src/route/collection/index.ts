@@ -2,7 +2,7 @@ import express from 'express';
 import CollectionService from '../../service/collection';
 import ResourceService from '../../service/resource';
 import { CreateCollectionSchema, UpdateCollectionSchema, Collection } from '../../type/collection';
-import { Resource } from '../../type/resource';
+import { Resource, RechunkResourceSchema } from '../../type/resource';
 import { ApiError } from '../../error/api-error';
 
 const router = express.Router();
@@ -43,6 +43,35 @@ router.delete('/:id/resources', async (req, res, next) => {
                 total: resources.length
             },
             message: "Resource deleted"
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post('/:id/resources/rechunk', async (req, res, next) => {
+    try {
+        const ownerId = req.query.ownerId as string;
+        const { settings } = await RechunkResourceSchema.parseAsync(req.body ?? {});
+        const resources: Resource[] = await ResourceService.getResourcesByCollectionId(req.params.id, ownerId, false);
+        const results = await Promise.all(resources.map(async (resource) => {
+            const resourceId = resource?._id?.toString() || "";
+            try {
+                await ResourceService.rechunkResource(resourceId, settings);
+                return { resourceId, queued: true };
+            } catch (error: any) {
+                return { resourceId, queued: false, message: error?.message };
+            }
+        }));
+        const queued = results.filter((result) => result.queued);
+        res.status(202).json({
+            resources: results,
+            metadata: {
+                total: results.length,
+                queued: queued.length,
+                skipped: results.length - queued.length
+            },
+            message: 'Resources queued for re-chunking'
         });
     } catch (error) {
         next(error);
