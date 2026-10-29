@@ -57,6 +57,9 @@ export const WORKING_MEMORY = {
     // Evals jump through time, so a read files overdue buffers first. A live server files them on a timer
     // (consolidateOverdue) and turns this off, so reads never wait for filing.
     consolidateOnRead: process.env.MEMORY_WM_CONSOLIDATE_ON_READ !== 'false',
+    // Whether a buffer is also filed once its oldest message has waited maxAgeMinutes. Off: only a full buffer
+    // is filed, so every filing sees a whole batch of context; waiting messages are still found by reads.
+    fileByAge: process.env.MEMORY_WM_FILE_BY_AGE !== 'false',
 };
 
 // link: descriptive names whose last word is one of these ("the WebRTC product") may refer to an entity
@@ -186,7 +189,7 @@ export class TemporalKgApproach implements MemoryApproach {
 
     // Working memory: the message waits, as written, in its team's buffer, or in the speaker's own buffer when
     // the gate thinks it's private (or there's no team). A buffer is consolidated when it holds
-    // WORKING_MEMORY.batchSize messages or its oldest waited maxAgeMinutes (message time).
+    // WORKING_MEMORY.batchSize messages or (with fileByAge) its oldest waited maxAgeMinutes (message time).
     private async buffer(msg: RawMessage, ctx: IngestContext, actor: PersonRef, gate: GateDecision, notes: string[]) {
         const graph = this.db();
         const team = ctx.writableScopes.find((s) => s.startsWith('team:'));
@@ -204,7 +207,8 @@ export class TemporalKgApproach implements MemoryApproach {
         const pending = await graph.pendingBuffered(scope);
         notes.push(`working memory (${scope}): ${pending.length} waiting`);
         const oldest = Date.parse(pending[0]?.at ?? msg.occurredAt);
-        if (pending.length >= WORKING_MEMORY.batchSize || Date.parse(msg.occurredAt) - oldest >= WORKING_MEMORY.maxAgeMinutes * 60_000) {
+        const tooOld = WORKING_MEMORY.fileByAge && Date.parse(msg.occurredAt) - oldest >= WORKING_MEMORY.maxAgeMinutes * 60_000;
+        if (pending.length >= WORKING_MEMORY.batchSize || tooOld) {
             notes.push(...(await this.consolidate(scope, ctx.directory)));
         }
     }
