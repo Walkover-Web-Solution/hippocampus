@@ -9,6 +9,8 @@
 //   MEMORY_MCP_TOKENS=p-ankit:<token>,p-priya:<token>   each person's bearer token; the token decides who
 //                                      is speaking, so nobody can read someone else's personal memory
 //   MEMORY_MCP_UI=false                no Lab UI or /api (they show everyone's memories, unauthenticated)
+//   MEMORY_MCP_ALIASES=engram:<version>   short names for versions in the URL (/mcp/engram); data stays under the version
+// Admins (role "admin" in world.json) add teammates and get their token from POST /admin/people.
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=') as [string, string | undefined]).map(([k, v]) => [k, v ?? 'true']));
 const STDIO = args.stdio === 'true';
@@ -81,16 +83,31 @@ function parseTokens(value: string | undefined): Map<string, string> {
     return tokens;
 }
 
+// "engram:temporal-kg+..." → alias → version.
+function parseAliases(value: string | undefined): Map<string, string> {
+    const aliases = new Map<string, string>();
+    for (const entry of list(value)) {
+        const at = entry.indexOf(':');
+        if (at <= 0 || at === entry.length - 1) throw new Error('MEMORY_MCP_ALIASES entries must look like <alias>:<version>');
+        aliases.set(entry.slice(0, at), entry.slice(at + 1));
+    }
+    return aliases;
+}
+
 async function main() {
     const { APPROACH_NAMES: ALL_VERSIONS } = await import('../approaches/registry');
-    const { MemoryService, FEATURED_VERSIONS: ALL_FEATURED } = await import('./service');
+    const { MemoryService, FEATURED_VERSIONS: ALL_FEATURED, MCP_DIR } = await import('./service');
     const { buildMcpServer } = await import('./tools');
+    const { AccessStore, isAdmin, upsertPerson } = await import('./access');
+    const { writeFileSync } = await import('fs');
 
     const served = list(process.env.MEMORY_MCP_VERSIONS);
     for (const version of served) if (!ALL_VERSIONS.includes(version)) throw new Error(`MEMORY_MCP_VERSIONS: unknown version "${version}"`);
     const APPROACH_NAMES = served.length ? served : ALL_VERSIONS;
     const FEATURED_VERSIONS = served.length ? served : ALL_FEATURED;
-    const tokens = parseTokens(process.env.MEMORY_MCP_TOKENS);
+    const access = new AccessStore(path.join(MCP_DIR, 'tokens.json'), parseTokens(process.env.MEMORY_MCP_TOKENS));
+    const aliases = parseAliases(process.env.MEMORY_MCP_ALIASES);
+    for (const [alias, version] of aliases) if (!APPROACH_NAMES.includes(version)) throw new Error(`MEMORY_MCP_ALIASES: "${alias}" points to unknown version "${version}"`);
     const ui = process.env.MEMORY_MCP_UI !== 'false';
 
     if (APPROACH_NAMES.some((v) => v.startsWith('claims-pg'))) {
@@ -131,20 +148,51 @@ async function main() {
     const base = (process.env.MEMORY_MCP_PUBLIC_URL || `http://127.0.0.1:${port}`).replace(/\/+$/, '');
     const knownVersion = (version: string) => APPROACH_NAMES.includes(version);
     const str = (value: unknown) => (typeof value === 'string' ? value : undefined);
+    const bearer = (req: { headers: { authorization?: string } }) => /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]?.trim();
+    // The name a version goes by in URLs: its alias if it has one.
+    const urlName = (version: string) => [...aliases].find(([, v]) => v === version)?.[0] ?? version;
 
     app.get('/health', (_req, res) => res.json({ ok: true }));
 
+    // ---- Admin: add a teammate (or find them by name) and issue them a fresh token ----
+    app.post('/admin/people', (req, res) => {
+        const caller = access.enabled ? access.personFor(bearer(req)) : undefined;
+        const world = service.world();
+        if (!caller || !isAdmin(world, caller)) {
+            res.status(caller ? 403 : 401).json({ error: caller ? 'Only admins can add people' : 'Missing or unknown bearer token' });
+            return;
+        }
+        const name = str(req.body?.name)?.trim();
+        const email = str(req.body?.email)?.trim();
+        if (!name || name.length > 80 || !email) {
+            res.status(400).json({ error: 'Send {"name": "Full Name", "email": "name@company.com", "aliases": ["Nickname"], "team": "optional team id"}' });
+            return;
+        }
+        const aliasList = Array.isArray(req.body.aliases) ? req.body.aliases.filter((a: unknown) => typeof a === 'string') : [];
+        try {
+            const { person, team } = upsertPerson(world, { name, email, aliases: aliasList, team: str(req.body.team) });
+            writeFileSync(path.join(MCP_DIR, 'world.json'), JSON.stringify(world, null, 2));
+            const token = access.issue(person.id);
+            const url = `${base}/mcp/${urlName(FEATURED_VERSIONS[0])}`;
+            res.json({
+                id: person.id, name: person.name, email: person.email, aliases: person.aliases, team: team.id, token,
+                connect: `claude mcp add --transport http memory "${url}" --header "Authorization: Bearer ${token}"`,
+            });
+        } catch (error: any) {
+            res.status(400).json({ error: error?.message ?? String(error) });
+        }
+    });
+
     // ---- MCP (Streamable HTTP, stateless: one server per request) ----
     app.post('/mcp/:version', async (req, res) => {
-        const version = req.params.version;
+        const version = aliases.get(req.params.version) ?? req.params.version;
         if (!knownVersion(version)) {
-            res.status(404).json({ error: `Unknown version "${version}"`, versions: APPROACH_NAMES });
+            res.status(404).json({ error: `Unknown version "${req.params.version}"`, versions: [...aliases.keys(), ...APPROACH_NAMES] });
             return;
         }
         let person = str(req.query.person);
-        if (tokens.size) {
-            const token = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]?.trim();
-            const owner = token ? tokens.get(token) : undefined;
+        if (access.enabled) {
+            const owner = access.personFor(bearer(req));
             if (!owner) {
                 res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Missing or unknown bearer token' }, id: null });
                 return;
@@ -280,14 +328,13 @@ async function main() {
     app.listen(port, host, () => {
         const world = service.world();
         // With tokens the token names the person, so only the team goes in the URL.
-        const query = tokens.size
-            ? (world.defaults.team ? `?team=${world.defaults.team}` : '')
-            : `?person=${world.defaults.person}${world.defaults.team ? `&team=${world.defaults.team}` : ''}`;
+        // With tokens the token names the person, and the default team needs no mention.
+        const query = access.enabled ? '' : `?person=${world.defaults.person}${world.defaults.team ? `&team=${world.defaults.team}` : ''}`;
         console.log(`memory MCP server on ${host}:${port}${ui ? `: UI ${base}/` : ' (UI off)'}`);
         console.log('MCP endpoints (Streamable HTTP), one per memory version:');
-        for (const version of FEATURED_VERSIONS) console.log(`  ${base}/mcp/${version}${query}`);
-        const header = tokens.size ? ' --header "Authorization: Bearer <your token>"' : '';
-        console.log(`Claude Code: claude mcp add --transport http memory "${base}/mcp/${FEATURED_VERSIONS[0]}${query}"${header}`);
+        for (const version of FEATURED_VERSIONS) console.log(`  ${base}/mcp/${urlName(version)}${query}`);
+        const header = access.enabled ? ' --header "Authorization: Bearer <your token>"' : '';
+        console.log(`Claude Code: claude mcp add --transport http memory "${base}/mcp/${urlName(FEATURED_VERSIONS[0])}${query}"${header}`);
     });
 }
 

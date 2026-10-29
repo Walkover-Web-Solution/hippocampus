@@ -67,6 +67,7 @@ export interface PersonRef {
     id: string;
     name: string;
     aliases: string[];
+    email?: string;
 }
 
 export interface IngestContext {

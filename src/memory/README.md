@@ -48,9 +48,15 @@ The MCP server runs as the pm2 app `memory-mcp` in the hippocampus image (port 7
    and `MEMORY_MCP_UI=false` (see `.env.example`).
 4. Route port 7800 (HTTPS in front); `GET /health` for checks.
 
-Each teammate then runs:
-`claude mcp add --transport http memory "<public url>/mcp/<version>?team=<team-id>" --header "Authorization: Bearer <their token>"`.
-The token decides who is speaking; a `person` in the URL is ignored.
+`MEMORY_MCP_ALIASES=engram:<version>` gives the version a short name in URLs (`/mcp/engram`); memories stay stored
+under the version itself.
+
+An admin (role `admin` in `world.json`) adds a teammate and gets their token with
+`curl -X POST <public url>/admin/people -H "Authorization: Bearer <admin token>" -H "content-type: application/json" -d '{"name":"Priya Sharma","email":"priya@company.com","aliases":["Priya"]}'`.
+The person joins the default team (or `"team": "<id>"`); the response holds their token and the command they run:
+`claude mcp add --transport http memory "<public url>/mcp/engram" --header "Authorization: Bearer <their token>"`.
+Calling it again with the same email issues a new token and the old one stops working. Issued tokens are stored only as
+hashes (`.memory-data/mcp/tokens.json`). The token decides who is speaking; a `person` in the URL is ignored.
 
 ## Approaches
 
