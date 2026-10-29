@@ -1,0 +1,8 @@
+{
+  "name": "memory-approach-temporal-kg",
+  "private": true,
+  "description": "Dependencies of the temporal-kg approach only, kept out of hippocampus' root package.json.",
+  "dependencies": {
+    "neo4j-driver": "^6.0.0"
+  }
+}

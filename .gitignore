@@ -10,3 +10,6 @@ FEEDBACK.md
 venv
 main.cpython-*
 adapter_models
+memory-eval-reports
+.memory-data
+readme/

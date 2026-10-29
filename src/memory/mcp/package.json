@@ -1,0 +1,13 @@
+{
+  "name": "memory-mcp",
+  "private": true,
+  "description": "Dependencies of the memory MCP server and its UI only, kept out of hippocampus' root package.json.",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
+  }
+}

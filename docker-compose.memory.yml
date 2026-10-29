@@ -1,0 +1,82 @@
+# Local infra for the team-memory POC (src/memory). Non-default ports so it can run next to other databases.
+#   docker compose -f docker-compose.memory.yml up -d
+name: hippocampus-memory
+
+services:
+  memory-postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: memory
+      POSTGRES_PASSWORD: memory
+      POSTGRES_DB: memory
+    ports:
+      - "5433:5432"
+    volumes:
+      - memory-postgres:/var/lib/postgresql/data
+      - ./src/memory/infra/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
+      interval: 5s
+      retries: 10
+
+  memory-neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: neo4j/memory-poc
+    ports:
+      - "7475:7474"
+      - "7688:7687"
+    volumes:
+      - memory-neo4j:/data
+
+  # Extra throwaway Neo4j instances so eval runs can test graph variants side by side:
+  #   docker compose -f docker-compose.memory.yml --profile eval-pool up -d
+  #   MEMORY_NEO4J_POOL=bolt://127.0.0.1:7688,bolt://127.0.0.1:7689,bolt://127.0.0.1:7690,bolt://127.0.0.1:7691,bolt://127.0.0.1:7692,bolt://127.0.0.1:7693
+  memory-neo4j-2: &neo4j-pool
+    image: neo4j:5.26-community
+    profiles: [eval-pool]
+    environment:
+      NEO4J_AUTH: neo4j/memory-poc
+      # Small on purpose: six instances at 1 GB heap ran a 32 GB machine out of memory.
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 128m
+    ports:
+      - "7689:7687"
+  memory-neo4j-3:
+    <<: *neo4j-pool
+    ports:
+      - "7690:7687"
+  memory-neo4j-4:
+    <<: *neo4j-pool
+    ports:
+      - "7691:7687"
+  memory-neo4j-5:
+    <<: *neo4j-pool
+    ports:
+      - "7692:7687"
+  memory-neo4j-6:
+    <<: *neo4j-pool
+    ports:
+      - "7693:7687"
+
+  # The memory MCP server's own graph (npm run memory:mcp), kept apart from eval runs, which reset theirs.
+  #   docker compose -f docker-compose.memory.yml --profile mcp up -d memory-neo4j-mcp
+  memory-neo4j-mcp:
+    image: neo4j:5.26-community
+    profiles: [mcp]
+    environment:
+      NEO4J_AUTH: neo4j/memory-poc
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 128m
+    ports:
+      - "7476:7474"
+      - "7694:7687"
+    volumes:
+      - memory-neo4j-mcp:/data
+
+volumes:
+  memory-postgres:
+  memory-neo4j:
+  memory-neo4j-mcp:

@@ -12,7 +12,16 @@
     "feedback-consumer": "ts-node-dev src/consumer/index.ts --consumer=feedback",
     "dev": "ts-node-dev src/server.ts",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "memory:install": "cd src/memory/approaches/claims-pg && npm install && cd ../temporal-kg && npm install && cd ../../mcp && npm install",
+    "memory:mcp": "tsx src/memory/mcp/server.ts",
+    "memory:typecheck": "tsc -p src/memory/tsconfig.json",
+    "memory:test": "jest -c jest.memory.config.ts",
+    "memory:test:integration": "jest -c jest.memory.integration.config.ts",
+    "memory:eval": "tsx src/memory/eval/cli.ts",
+    "memory:check": "tsx src/memory/eval/provider-check.ts",
+    "memory:compare": "tsx src/memory/eval/compare.ts",
+    "memory:rescore": "tsx src/memory/eval/rescore.ts"
   },
   "keywords": [
     "rag",
@@ -41,6 +50,7 @@
     "request": "^2.88.2",
     "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   },
   "dependencies": {

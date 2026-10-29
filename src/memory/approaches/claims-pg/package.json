@@ -1,0 +1,11 @@
+{
+  "name": "memory-approach-claims-pg",
+  "private": true,
+  "description": "Dependencies of the claims-pg approach only, kept out of hippocampus' root package.json.",
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
+  }
+}

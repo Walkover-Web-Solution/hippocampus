@@ -1,0 +1,23 @@
+{
+  "_comment": "Copied to .memory-data/mcp/world.json on first start; edit that copy. Re-read on every request, so changes apply live.",
+  "defaults": { "person": "p-ankit", "team": "t-core" },
+  "people": [
+    { "id": "p-ankit", "name": "Ankit Kumar", "aliases": ["Ankit", "AK"] },
+    { "id": "p-priya", "name": "Priya Sharma", "aliases": ["Priya", "PS"] },
+    { "id": "p-daniel", "name": "Daniel Okafor", "aliases": ["Daniel", "Dan"] },
+    { "id": "p-sofia", "name": "Sofia Lindqvist", "aliases": ["Sofia"] }
+  ],
+  "teams": [
+    { "id": "t-core", "name": "Core" },
+    { "id": "t-platform", "name": "Platform" }
+  ],
+  "memberships": [
+    { "personId": "p-ankit", "teamId": "t-core", "role": "admin" },
+    { "personId": "p-ankit", "teamId": "t-platform", "role": "member" },
+    { "personId": "p-priya", "teamId": "t-core", "role": "member" },
+    { "personId": "p-daniel", "teamId": "t-core", "role": "member" },
+    { "personId": "p-daniel", "teamId": "t-platform", "role": "admin" },
+    { "personId": "p-sofia", "teamId": "t-core", "role": "member" },
+    { "personId": "p-sofia", "teamId": "t-platform", "role": "member" }
+  ]
+}

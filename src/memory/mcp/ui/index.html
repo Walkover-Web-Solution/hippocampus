@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory Lab</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #5d6673; --line: #dfe3e8; --accent: #2f6fdf;
+  --chip: #eef1f5; --code: #f1f3f6;
+  --new: #1f8a4c; --inval: #b7791f; --disp: #c53030; --dup: #6b7280; --prop: #7c3aed; --skip: #9a4d4d;
+  --match: #2563eb; --gate: #0f8a8a; --info: #6b7280;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --panel: #191d23; --ink: #e6e9ee; --muted: #9aa4b2; --line: #2b313a; --accent: #6aa0ff;
+    --chip: #232932; --code: #20262e;
+    --new: #48c07a; --inval: #e0a84a; --disp: #f06b6b; --dup: #9aa4b2; --prop: #a78bfa; --skip: #d08a8a;
+    --match: #6aa0ff; --gate: #4fc4c4; --info: #9aa4b2;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 16px; margin: 0 8px 0 0; }
+nav { display: flex; gap: 4px; }
+nav button { border: 0; background: none; color: var(--muted); padding: 6px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+nav button.active { background: var(--chip); color: var(--ink); font-weight: 600; }
+label { color: var(--muted); font-size: 12px; }
+select, input, textarea { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+textarea { width: 100%; resize: vertical; }
+button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; font: inherit; font-weight: 600; }
+button.ghost { background: var(--chip); color: var(--ink); border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+button:disabled { opacity: .5; cursor: default; }
+main { padding: 16px; max-width: 1500px; margin: 0 auto; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.field { display: flex; flex-direction: column; gap: 3px; }
+.versions { display: flex; flex-wrap: wrap; gap: 6px; }
+.vchip { display: inline-flex; align-items: center; gap: 5px; background: var(--chip); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; user-select: none; }
+.vchip input { margin: 0; }
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; }
+.grid2 { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 14px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+.list { display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 170px); overflow: auto; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; cursor: pointer; background: var(--panel); }
+.card.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.card .top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.card .txt { margin: 4px 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.pill { font-size: 11px; border-radius: 999px; padding: 1px 8px; background: var(--chip); color: var(--muted); }
+.pill.done { color: var(--new); } .pill.error { color: var(--disp); } .pill.running, .pill.queued { color: var(--inval); }
+.kind { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.col { border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-width: 0; }
+.col h3 { font-size: 13px; margin: 0 0 6px; word-break: break-all; }
+.step { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-top: 1px dashed var(--line); }
+.step:first-of-type { border-top: 0; }
+.badge { flex: none; font-size: 10px; font-weight: 700; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; color: #fff; background: var(--info); }
+.b-new, .b-extracted { background: var(--new); } .b-invalidated { background: var(--inval); } .b-disputed { background: var(--disp); }
+.b-duplicate, .b-unchanged { background: var(--dup); } .b-proposed { background: var(--prop); } .b-skipped, .b-dropped, .b-rejected { background: var(--skip); }
+.b-matched { background: var(--match); } .b-not-matched { background: var(--dup); } .b-gate { background: var(--gate); } .b-kept { background: var(--match); } .b-buffered { background: var(--inval); }
+.turn { border-left: 3px solid var(--line); padding: 2px 8px; margin: 4px 0; white-space: pre-wrap; }
+.turn.user { border-color: var(--accent); } .turn.assistant { border-color: var(--gate); } .turn.note { border-color: var(--prop); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 5px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+.st { font-size: 11px; font-weight: 700; }
+.st-current { color: var(--new); } .st-superseded { color: var(--dup); } .st-proposed { color: var(--prop); } .st-disputed { color: var(--disp); }
+tr.superseded td.t { text-decoration: line-through; color: var(--muted); }
+pre { background: var(--code); border-radius: 6px; padding: 10px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+.turnrow { display: grid; grid-template-columns: 120px 1fr 30px; gap: 6px; margin-bottom: 6px; }
+.hidden { display: none !important; }
+.err { color: var(--disp); }
+h2 { font-size: 14px; margin: 0 0 10px; }
+.section + .section { margin-top: 16px; }
+/* chat */
+#tab-chat { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; height: calc(100vh - 92px); }
+#chatLog { flex: 1; overflow: auto; padding: 4px 4px 12px; display: flex; flex-direction: column; gap: 12px; }
+.msg { align-self: flex-end; max-width: 75%; background: var(--accent); color: #fff; border-radius: 14px 14px 4px 14px; padding: 8px 12px; white-space: pre-wrap; }
+.msg.agent { background: var(--prop); }
+.msg.ask { background: var(--panel); color: var(--ink); border: 1px solid var(--accent); }
+.meta { align-self: flex-end; font-size: 11px; color: var(--muted); margin-bottom: -8px; }
+.chips { align-self: flex-end; display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 90%; }
+.chip { font-size: 11px; border-radius: 999px; padding: 2px 9px; background: var(--chip); color: var(--muted); cursor: pointer; border: 1px solid transparent; }
+.chip.open { border-color: var(--accent); }
+.chip .ok { color: var(--new); } .chip .bad { color: var(--disp); } .chip .wait { color: var(--inval); }
+.steps { align-self: flex-end; width: min(720px, 90%); }
+.replies { align-self: flex-start; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; width: min(100%, 1000px); }
+.reply { background: var(--panel); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 8px 12px; min-width: 0; }
+.reply .v { font-size: 11px; color: var(--muted); margin-bottom: 4px; word-break: break-all; }
+.reply details summary { cursor: pointer; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.composer { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.people { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.person { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 3px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+.person.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel); color: var(--muted); padding: 4px 12px; cursor: pointer; font: inherit; font-size: 12px; }
+.seg button.on { background: var(--chip); color: var(--ink); font-weight: 600; }
+.inputrow { display: flex; gap: 8px; align-items: flex-end; }
+.inputrow textarea { min-height: 42px; max-height: 200px; border-radius: 10px; padding: 10px 12px; }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.examples button { background: var(--chip); border: 0; color: var(--ink); border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+/* graph */
+.graphwrap { display: grid; grid-template-columns: 1fr 340px; gap: 12px; height: calc(100vh - 200px); min-height: 420px; }
+@media (max-width: 900px) { .graphwrap { grid-template-columns: 1fr; height: auto; } #gSvg { height: 60vh; } }
+#gSvg { width: 100%; height: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; cursor: grab; touch-action: none; user-select: none; }
+#gSvg.panning { cursor: grabbing; }
+.gside { overflow: auto; }
+.gnode circle { stroke: var(--panel); stroke-width: 2; cursor: pointer; }
+.gnode.sel circle { stroke: var(--accent); stroke-width: 3; }
+.gnode text { font-size: 11px; fill: var(--ink); pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+.gnode .count { font-size: 9px; fill: #fff; stroke: none; font-weight: 700; }
+.gedge { fill: none; stroke-width: 1.6; cursor: pointer; }
+.gedge.sel { stroke-width: 3.2; }
+.gedge-hit { fill: none; stroke: transparent; stroke-width: 10; cursor: pointer; }
+.gedge-label { font-size: 9.5px; fill: var(--muted); pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+.dim { opacity: .14; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.legend b { display: inline-block; width: 18px; height: 0; border-top: 2px solid; margin-right: 4px; vertical-align: middle; }
+.linkname { color: var(--accent); cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Memory Lab</h1>
+  <nav>
+    <button data-tab="chat">Chat</button>
+    <button data-tab="timeline" class="active">Timeline</button>
+    <button data-tab="compose">Compose</button>
+    <button data-tab="memory">Memory</button>
+    <button data-tab="graph">Graph</button>
+    <button data-tab="connect">Connect</button>
+  </nav>
+  <div class="field"><label>Versions</label><div class="versions" id="versions"></div></div>
+  <div class="field"><label>Add version</label><select id="moreVersions"><option value="">all versions…</option></select></div>
+</header>
+<main>
+  <!-- Chat -->
+  <section id="tab-chat" class="hidden">
+    <div id="chatLog"></div>
+    <div class="composer">
+      <div class="people">
+        <span class="muted" style="font-size:12px">Speaking as</span>
+        <span id="chatPeople" class="people"></span>
+        <span class="muted" style="font-size:12px">in</span>
+        <select id="chatTeam"></select>
+        <span class="seg" id="chatMode"><button data-mode="remember" class="on">Remember</button><button data-mode="ask">Ask</button></span>
+        <label style="font-size:12px"><input type="checkbox" id="chatAgent"> agent inferred it</label>
+        <button class="ghost" id="chatNew" style="margin-left:auto; font-size:12px">New chat</button>
+      </div>
+      <div id="chatWarn" class="err hidden" style="font-size:12px"></div>
+      <div class="inputrow">
+        <textarea id="chatInput" rows="1" placeholder="Say something worth remembering…  (Enter to send, Shift+Enter for a new line, start with ? to ask)"></textarea>
+        <button class="primary" id="chatSend">Send</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Timeline -->
+  <section id="tab-timeline" class="hidden">
+    <div class="row" style="margin-bottom:10px">
+      <div class="field"><label>Show</label><select id="fKind"><option value="">all requests</option><option value="remember">remember</option><option value="recall">recall</option></select></div>
+      <div class="field"><label>Source</label><select id="fSource"><option value="">any</option><option value="mcp">MCP (HTTP)</option><option value="stdio">MCP (stdio)</option><option value="ui">this UI</option></select></div>
+      <label style="align-self:center"><input type="checkbox" id="fSelected"> only selected versions</label>
+      <span class="muted" id="evCount" style="align-self:center"></span>
+      <button class="ghost" id="clearEvents" style="margin-left:auto">Clear timeline</button>
+    </div>
+    <div class="grid2">
+      <div class="list" id="groups"></div>
+      <div class="panel" id="detail"><p class="muted">Select a request to see what each memory version did with it.</p></div>
+    </div>
+  </section>
+
+  <!-- Compose -->
+  <section id="tab-compose" class="hidden">
+    <div class="panel section">
+      <h2>Remember: send a message as if an app or agent did</h2>
+      <div class="row">
+        <div class="field"><label>Person</label><select id="cPerson"></select></div>
+        <div class="field"><label>Active team</label><select id="cTeam"></select></div>
+        <div class="field"><label>App / agent</label><input id="cAgent" value="manual" size="14"></div>
+        <div class="field"><label>Who said it</label><select id="cKind"><option value="user">The person stated it</option><option value="agent">An agent inferred it (unconfirmed)</option></select></div>
+        <div class="field"><label>When (local time; empty = now)</label><input type="datetime-local" id="cAt" step="1"></div>
+      </div>
+      <div style="margin-top:10px" id="turns"></div>
+      <div class="row">
+        <button class="ghost" id="addTurn">+ turn</button>
+        <label style="align-self:center"><input type="checkbox" id="cWait" checked> wait for results</label>
+        <button class="primary" id="sendRemember" style="margin-left:auto">Remember in selected versions</button>
+      </div>
+      <p class="muted" style="margin:8px 0 0">Two messages from different people with the same time are a concurrent write. Each version applies its writes one at a time, in arrival order.</p>
+    </div>
+
+    <div class="panel section">
+      <h2>Recall</h2>
+      <div class="row">
+        <div class="field"><label>Person</label><select id="rPerson"></select></div>
+        <div class="field"><label>Active team</label><select id="rTeam"></select></div>
+        <div class="field" style="flex:1; min-width:240px"><label>Question</label><input id="rQuery" placeholder="When does the Phoenix launch?"></div>
+        <div class="field"><label>As of (optional)</label><input type="datetime-local" id="rAsOf" step="1"></div>
+        <div class="field"><label>Limit</label><input type="number" id="rTopK" value="8" min="1" max="30" style="width:70px"></div>
+        <label style="align-self:center"><input type="checkbox" id="rProposed"> include unconfirmed</label>
+        <button class="primary" id="sendRecall">Recall from selected versions</button>
+      </div>
+      <div id="recallOut" style="margin-top:12px"></div>
+    </div>
+
+    <div class="panel section">
+      <h2>Batch: replay a use case</h2>
+      <p class="muted" style="margin-top:0">A JSON list of <span class="mono">remember</span> and <span class="mono">recall</span> items, run in order against every selected version. Add <span class="mono">"concurrent": true</span> to send a remember at the same moment as the one before it.</p>
+      <textarea id="batch" rows="14" class="mono"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="ghost" id="exampleBatch">Insert example</button>
+        <button class="primary" id="runBatch" style="margin-left:auto">Run batch</button>
+      </div>
+      <div id="batchOut" class="muted" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- Memory -->
+  <section id="tab-memory" class="hidden">
+    <div class="panel">
+      <div class="row" style="margin-bottom:10px">
+        <div class="field"><label>Person</label><select id="mPerson"></select></div>
+        <div class="field"><label>Active team</label><select id="mTeam"></select></div>
+        <div class="field"><label>As of (optional)</label><input type="datetime-local" id="mAsOf" step="1"></div>
+        <button class="primary" id="loadMemory">Show memory in selected versions</button>
+      </div>
+      <div id="memoryOut" class="cols"></div>
+    </div>
+  </section>
+
+  <!-- Graph -->
+  <section id="tab-graph" class="hidden">
+    <div class="row" style="margin-bottom:10px">
+      <div class="field"><label>Version</label><select id="gVersion"></select></div>
+      <div class="field"><label>Person</label><select id="gPerson"></select></div>
+      <div class="field"><label>Active team</label><select id="gTeam"></select></div>
+      <div class="field"><label>As of (optional)</label><input type="datetime-local" id="gAsOf" step="1"></div>
+      <label style="align-self:center"><input type="checkbox" id="gHistory"> show replaced facts</label>
+      <label style="align-self:center"><input type="checkbox" id="gLabels" checked> relation labels</label>
+      <div class="field"><label>Find</label><input id="gFind" placeholder="entity name" size="14"></div>
+      <button class="primary" id="gLoad">Refresh</button>
+      <button class="ghost" id="gRelayout">Re-layout</button>
+      <button class="ghost" id="gConsolidate" title="Turn what waits in working memory into entities and facts now">Consolidate now</button>
+      <button class="ghost" id="gDream" title="Merge entities that are one thing, retire facts newer ones made untrue">Dream now</button>
+      <span class="muted" id="gStats" style="align-self:center; font-size:12px"></span>
+    </div>
+    <div class="graphwrap">
+      <svg id="gSvg"></svg>
+      <div class="panel gside" id="gSide"><p class="muted">Click an entity or a fact. Scroll to zoom, drag the background to pan, drag entities to arrange them, double-click to fit.</p></div>
+    </div>
+    <div class="legend" id="gLegend"></div>
+    <div class="panel" id="gWorking" style="margin-top:10px"></div>
+  </section>
+
+  <!-- Connect -->
+  <section id="tab-connect" class="hidden">
+    <div class="panel">
+      <div class="row" style="margin-bottom:10px">
+        <div class="field"><label>Version</label><select id="kVersion"></select></div>
+        <div class="field"><label>Person</label><select id="kPerson"></select></div>
+        <div class="field"><label>Default team</label><select id="kTeam"></select></div>
+      </div>
+      <div id="connectOut"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const api = async (url, opts) => {
+  const res = await fetch(url, opts && { method: opts.method ?? 'POST', headers: { 'content-type': 'application/json' }, body: opts.body && JSON.stringify(opts.body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+};
+const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+const time = (iso) => iso ? new Date(iso).toLocaleString() : '';
+const localToIso = (v) => v ? new Date(v).toISOString() : undefined;
+
+let config = null;
+let selected = [];
+let events = [];
+let selectedGroup = null;
+
+// ---------- versions ----------
+function renderVersions() {
+  const shown = [...new Set([...config.featured, ...selected])];
+  $('versions').innerHTML = shown.map((v) => `<label class="vchip"><input type="checkbox" value="${esc(v)}" ${selected.includes(v) ? 'checked' : ''}>${esc(v)}</label>`).join('');
+  $('versions').querySelectorAll('input').forEach((box) => box.onchange = () => {
+    selected = [...$('versions').querySelectorAll('input:checked')].map((b) => b.value);
+    store.set('versions', selected);
+    renderGroups();
+  });
+  $('moreVersions').innerHTML = '<option value="">all versions…</option>' + config.versions.filter((v) => !shown.includes(v)).map((v) => `<option>${esc(v)}</option>`).join('');
+  $('kVersion').innerHTML = config.versions.map((v) => `<option ${v === config.featured[0] ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  // The graph view only makes sense for versions that keep entities.
+  const graphable = config.versions.filter((v) => v.startsWith('temporal-kg') || v.startsWith('claims-pg'));
+  const current = $('gVersion').value || config.featured[0];
+  $('gVersion').innerHTML = [...new Set([...config.featured.filter((v) => graphable.includes(v)), ...graphable])].map((v) => `<option ${v === current ? 'selected' : ''}>${esc(v)}</option>`).join('');
+}
+$('moreVersions').onchange = (e) => {
+  if (!e.target.value) return;
+  selected.push(e.target.value);
+  store.set('versions', selected);
+  renderVersions();
+};
+
+function fillIdentity(personId, teamId) {
+  const w = config.world;
+  for (const sel of ['cPerson', 'rPerson', 'mPerson', 'kPerson', 'gPerson']) $(sel).innerHTML = w.people.map((p) => `<option value="${esc(p.id)}" ${p.id === personId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+  for (const sel of ['cTeam', 'rTeam', 'mTeam', 'kTeam', 'gTeam']) $(sel).innerHTML = '<option value="none">no team (personal)</option>' + w.teams.map((t) => `<option value="${esc(t.id)}" ${t.id === teamId ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+}
+const personName = (id) => config.world.people.find((p) => p.id === id)?.name ?? id;
+const teamName = (id) => id ? (config.world.teams.find((t) => t.id === id)?.name ?? id) : 'no team';
+
+// ---------- tabs ----------
+document.querySelectorAll('nav button').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('active', x === b));
+  document.querySelectorAll('main > section').forEach((s) => s.classList.toggle('hidden', s.id !== `tab-${b.dataset.tab}`));
+  store.set('tab', b.dataset.tab);
+  if (b.dataset.tab === 'connect') renderConnect();
+  if (b.dataset.tab === 'graph' && config) { renderLegend(); if (!graph.data) loadGraph(); }
+});
+
+// ---------- timeline ----------
+function summary(e) {
+  if (e.status !== 'done') return e.status === 'error' ? 'error' : e.status;
+  if (e.kind === 'recall') return `${e.memories?.length ?? 0} memories`;
+  const counts = {};
+  for (const s of e.steps ?? []) counts[s.kind] = (counts[s.kind] ?? 0) + 1;
+  if (counts.buffered && Object.keys(counts).every((k) => k === 'buffered' || k === 'gate')) return 'waiting in working memory';
+  const parts = ['new', 'extracted', 'invalidated', 'disputed', 'proposed', 'duplicate', 'matched', 'rejected', 'dropped', 'skipped'].filter((k) => counts[k]).map((k) => `${counts[k]} ${k}`);
+  return parts.join(', ') || 'nothing stored';
+}
+
+function groupsOf(list) {
+  const byGroup = new Map();
+  for (const e of list) {
+    if (!byGroup.has(e.group)) byGroup.set(e.group, []);
+    byGroup.get(e.group).push(e);
+  }
+  return [...byGroup.values()];
+}
+
+function preview(e) {
+  if (e.kind === 'recall') return e.query?.text ?? '';
+  if (e.kind === 'consolidate') return 'Consolidate working memory';
+  if (e.kind === 'dream') return 'Dream: merge entities, retire outdated facts';
+  return (e.message?.turns ?? []).map((t) => t.content).join(' / ');
+}
+
+let timelineSig = null;
+function renderGroups() {
+  const kind = $('fKind').value, source = $('fSource').value, onlySel = $('fSelected').checked;
+  const filtered = events.filter((e) => (!kind || e.kind === kind) && (!source || e.source === source) && (!onlySel || selected.includes(e.version)));
+  const sig = JSON.stringify([filtered.map((e) => [e.id, e.status]), selectedGroup, kind, source, onlySel, selected]);
+  if (sig === timelineSig) return;
+  timelineSig = sig;
+  // A batch shares one group across many requests; split it by request content and time.
+  const groups = groupsOf(filtered.map((e) => ({ ...e, group: e.group.startsWith('batch-') ? `${e.group}|${e.kind}|${preview(e)}|${e.message?.occurredAt ?? e.query?.asOf ?? ''}` : e.group })));
+  $('evCount').textContent = `${groups.length} requests`;
+  $('groups').innerHTML = groups.map((g) => {
+    const e = g[0];
+    const who = `${esc(personName(e.person))} · ${esc(teamName(e.team))}`;
+    return `<div class="card ${g[0].group === selectedGroup ? 'sel' : ''}" data-group="${esc(g[0].group)}">
+      <div class="top"><span class="kind">${esc(e.kind)}${e.message?.kind === 'agent' ? ' · inferred' : ''}</span><span>${esc(time(e.at))}</span></div>
+      <div class="txt">${esc(preview(e))}</div>
+      <div class="top"><span>${who}</span><span>${esc(e.source)}${e.client && e.client !== 'ui' ? ` · ${esc(e.client)}` : ''}</span></div>
+      <div class="pills">${g.map((x) => `<span class="pill ${esc(x.status)}" title="${esc(x.version)}">${esc(shortName(x.version))}: ${esc(summary(x))}</span>`).join('')}</div>
+    </div>`;
+  }).join('') || '<p class="muted">No requests yet. Send one from Compose, or connect Claude / Gemini (see Connect).</p>';
+  $('groups').querySelectorAll('.card').forEach((c) => c.onclick = () => { selectedGroup = c.dataset.group; renderGroups(); });
+  const current = groups.find((g) => g[0].group === selectedGroup);
+  renderDetail(current);
+}
+
+const shortName = (v) => v.replace('temporal-kg', 'tkg').replace('claims-pg', 'cpg');
+
+function renderDetail(group) {
+  if (!group) { $('detail').innerHTML = '<p class="muted">Select a request to see what each memory version did with it.</p>'; return; }
+  const e = group[0];
+  let head = `<div class="row" style="justify-content:space-between"><div><span class="kind">${esc(e.kind)}</span> by <b>${esc(personName(e.person))}</b> in <b>${esc(teamName(e.team))}</b></div><span class="muted">${esc(e.source)}${e.client ? ` · ${esc(e.client)}` : ''}</span></div>`;
+  if (e.kind === 'remember' && e.message) {
+    head += `<p class="muted" style="margin:6px 0">${e.message.kind === 'agent' ? 'Inferred by an agent' : 'Stated by the person'} via <b>${esc(e.message.agent)}</b> · happened ${esc(time(e.message.occurredAt))}</p>`;
+    head += e.message.turns.map((t) => `<div class="turn ${esc(t.role)}"><span class="muted mono">${esc(t.role)}</span> ${esc(t.content)}</div>`).join('');
+  } else if (e.query) {
+    head += `<p style="margin:6px 0"><b>${esc(e.query.text)}</b></p><p class="muted" style="margin:0">${e.query.asOf ? `as of ${esc(time(e.query.asOf))} · ` : ''}limit ${e.query.topK}${e.query.includeProposed ? ' · incl. unconfirmed' : ''} · reads up to ${esc(time(e.query.now))}</p>`;
+  }
+  const cols = group.map((x) => `<div class="col"><h3>${esc(x.version)}</h3><div class="muted" style="font-size:12px;margin-bottom:6px">${esc(x.status)}${x.ms != null ? ` · ${x.ms} ms` : ''}</div>${x.error ? `<div class="err">${esc(x.error)}</div>` : ''}${x.kind === 'recall' ? memoryTable(x.memories ?? []) : stepsHtml(x)}</div>`).join('');
+  $('detail').innerHTML = `${head}<div class="cols" style="margin-top:12px">${cols}</div>`;
+}
+
+function stepsHtml(e) {
+  if (e.status === 'queued' || e.status === 'running') return '<p class="muted">processing…</p>';
+  if (!e.steps?.length) return '<p class="muted">Nothing stored (this version records no details, or found nothing worth remembering).</p>';
+  return e.steps.map((s) => `<div class="step"><span class="badge b-${esc(s.kind)}">${esc(s.kind)}</span><span>${esc(s.text)}</span></div>`).join('');
+}
+
+function memoryTable(memories) {
+  if (!memories.length) return '<p class="muted">No memories.</p>';
+  return `<table><tr><th>Status</th><th>Memory</th><th>Scope</th></tr>${memories.map((m) => `<tr class="${esc(m.status)}">
+    <td><span class="st st-${esc(m.status)}">${esc(m.status)}</span></td>
+    <td class="t">${esc(m.text)}<div class="muted" style="font-size:11px">${m.validFrom ? `valid ${esc(time(m.validFrom))} → ${m.validTo ? esc(time(m.validTo)) : 'now'}` : ''}${m.author ? ` · by ${esc(m.author)}` : ''}${m.score != null ? ` · score ${Number(m.score).toFixed(2)}` : ''}</div></td>
+    <td class="mono">${esc(m.scope)}</td></tr>`).join('')}</table>`;
+}
+
+['fKind', 'fSource', 'fSelected'].forEach((id) => $(id).onchange = renderGroups);
+$('clearEvents').onclick = async () => {
+  if (!window.confirm('Clear the timeline? Stored memories are kept.')) return;
+  await api('/api/events', { method: 'DELETE' });
+  events = [];
+  renderGroups();
+  renderChat();
+};
+
+async function poll() {
+  try {
+    events = await api('/api/events?limit=1000');
+    renderGroups();
+    renderChat();
+  } catch {}
+}
+
+// Every 2.5 s, or every second while something is still being processed.
+function schedulePoll() {
+  const busy = events.some((e) => e.status === 'queued' || e.status === 'running');
+  setTimeout(async () => { if (!document.hidden) await poll(); schedulePoll(); }, busy ? 1000 : 2500);
+}
+
+// ---------- compose: remember ----------
+function addTurn(role = 'user', content = '') {
+  const row = document.createElement('div');
+  row.className = 'turnrow';
+  row.innerHTML = `<select><option value="user">user</option><option value="assistant">assistant</option><option value="note">agent note</option></select><textarea rows="2" placeholder="What was said"></textarea><button class="ghost" title="Remove">×</button>`;
+  row.querySelector('select').value = role;
+  row.querySelector('textarea').value = content;
+  row.querySelector('button').onclick = () => row.remove();
+  $('turns').appendChild(row);
+}
+$('addTurn').onclick = () => addTurn('assistant');
+$('cKind').onchange = () => {
+  const first = $('turns').querySelector('select');
+  if (first && $('cKind').value === 'agent' && first.value === 'user') first.value = 'note';
+};
+
+$('sendRemember').onclick = async () => {
+  const turns = [...$('turns').querySelectorAll('.turnrow')].map((r) => ({ role: r.querySelector('select').value, content: r.querySelector('textarea').value.trim() })).filter((t) => t.content);
+  if (!turns.length) return alert('Add at least one turn.');
+  if (!selected.length) return alert('Select at least one version.');
+  const button = $('sendRemember');
+  button.disabled = true;
+  try {
+    const result = await api('/api/remember', { body: {
+      versions: selected, person: $('cPerson').value, team: $('cTeam').value, agent: $('cAgent').value || 'manual',
+      kind: $('cKind').value, occurredAt: localToIso($('cAt').value), turns, wait: $('cWait').checked,
+    } });
+    selectedGroup = result[0]?.group ?? selectedGroup;
+    await poll();
+    document.querySelector('nav button[data-tab="timeline"]').click();
+  } catch (error) { alert(error.message); }
+  finally { button.disabled = false; }
+};
+
+// ---------- compose: recall ----------
+$('sendRecall').onclick = async () => {
+  const query = $('rQuery').value.trim();
+  if (!query) return;
+  if (!selected.length) return alert('Select at least one version.');
+  const button = $('sendRecall');
+  button.disabled = true;
+  $('recallOut').innerHTML = '<p class="muted">searching…</p>';
+  try {
+    const result = await api('/api/recall', { body: {
+      versions: selected, person: $('rPerson').value, team: $('rTeam').value, query, asOf: localToIso($('rAsOf').value) ?? null,
+      includeProposed: $('rProposed').checked, topK: Number($('rTopK').value) || 8,
+    } });
+    $('recallOut').innerHTML = `<div class="cols">${result.map((e) => `<div class="col"><h3>${esc(e.version)}</h3><div class="muted" style="font-size:12px">${e.ms} ms</div>${e.error ? `<div class="err">${esc(e.error)}</div>` : memoryTable(e.memories ?? [])}</div>`).join('')}</div>`;
+    poll();
+  } catch (error) { $('recallOut').innerHTML = `<p class="err">${esc(error.message)}</p>`; }
+  finally { button.disabled = false; }
+};
+$('rQuery').onkeydown = (e) => { if (e.key === 'Enter') $('sendRecall').click(); };
+
+// ---------- compose: batch ----------
+const EXAMPLE = [
+  { type: 'remember', person: 'p-ankit', team: 't-core', occurredAt: '2026-10-01T09:00:00Z', turns: [{ role: 'user', content: 'Heads up team: the Phoenix launch is October 30. Priya owns the payment SDK.' }] },
+  { type: 'remember', person: 'p-ankit', team: 't-core', occurredAt: '2026-10-02T10:00:00Z', turns: [{ role: 'user', content: 'Just for me, not the team: my personal target is to finish the checkout module by October 20.' }] },
+  { type: 'remember', person: 'p-priya', team: 't-core', occurredAt: '2026-10-08T15:00:00Z', turns: [{ role: 'user', content: 'The Phoenix beta will have 80 testers.' }] },
+  { type: 'remember', person: 'p-sofia', team: 't-core', occurredAt: '2026-10-08T15:00:00Z', concurrent: true, turns: [{ role: 'user', content: 'The Phoenix beta will have 50 testers.' }] },
+  { type: 'remember', person: 'p-ankit', team: 't-core', occurredAt: '2026-10-10T09:00:00Z', turns: [{ role: 'user', content: 'Update: the Phoenix go-live moved to November 5.' }] },
+  { type: 'remember', person: 'p-ankit', team: 't-core', kind: 'agent', agent: 'claude-code', occurredAt: '2026-10-11T09:00:00Z', turns: [{ role: 'note', content: 'Ankit seems to prefer tabs over spaces.' }] },
+  { type: 'recall', person: 'p-ankit', team: 't-core', query: 'When does Phoenix launch?' },
+  { type: 'recall', person: 'p-ankit', team: 't-core', query: 'When was the Phoenix launch planned?', asOf: '2026-10-05T00:00:00Z' },
+  { type: 'recall', person: 'p-ankit', team: 't-core', query: 'How many testers will the Phoenix beta have?' },
+  { type: 'recall', person: 'p-priya', team: 't-core', query: "What is Ankit's personal target for the checkout module?" },
+  { type: 'recall', person: 'p-ankit', team: 't-core', query: 'What is my target for the checkout module?' },
+];
+$('exampleBatch').onclick = () => { $('batch').value = JSON.stringify(EXAMPLE, null, 2); };
+$('runBatch').onclick = async () => {
+  let items;
+  try { items = JSON.parse($('batch').value); } catch (error) { return alert(`Not valid JSON: ${error.message}`); }
+  if (!Array.isArray(items)) return alert('The batch must be a JSON list.');
+  if (!selected.length) return alert('Select at least one version.');
+  store.set('batch', $('batch').value);
+  const button = $('runBatch');
+  button.disabled = true;
+  $('batchOut').textContent = `running ${items.length} items on ${selected.length} version(s)… (writes take 10-30 s each)`;
+  const timer = setInterval(poll, 2000);
+  try {
+    const result = await api('/api/batch', { body: { versions: selected, items } });
+    $('batchOut').textContent = `done: ${result.length} steps. See the Timeline.`;
+  } catch (error) { $('batchOut').innerHTML = `<span class="err">${esc(error.message)}</span>`; }
+  finally { clearInterval(timer); button.disabled = false; poll(); }
+};
+
+// ---------- memory ----------
+$('loadMemory').onclick = async () => {
+  if (!selected.length) return alert('Select at least one version.');
+  $('memoryOut').innerHTML = '<p class="muted">loading…</p>';
+  const params = (v) => new URLSearchParams({ version: v, person: $('mPerson').value, team: $('mTeam').value, ...($('mAsOf').value ? { asOf: localToIso($('mAsOf').value) } : {}) });
+  const results = await Promise.all(selected.map((v) => api(`/api/memories?${params(v)}`).then((m) => ({ v, m })).catch((error) => ({ v, error }))));
+  const order = { disputed: 0, current: 1, proposed: 2, superseded: 3 };
+  $('memoryOut').innerHTML = results.map(({ v, m, error }) => `<div class="col"><h3>${esc(v)}</h3>${error ? `<div class="err">${esc(error.message)}</div>` : `<div class="muted" style="font-size:12px">${m.length} memories</div>${memoryTable([...m].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)))}`}</div>`).join('');
+};
+
+// ---------- connect ----------
+function renderConnect() {
+  const version = $('kVersion').value, person = $('kPerson').value, team = $('kTeam').value;
+  const url = `${config.mcpBase}/${version}?person=${encodeURIComponent(person)}&team=${encodeURIComponent(team)}`;
+  const name = `memory-${shortName(version).replace(/[^a-z0-9]+/gi, '-')}`;
+  const gemini = { mcpServers: { [name]: { httpUrl: url } } };
+  const desktop = { mcpServers: { [name]: { command: config.stdio.node, args: [config.stdio.tsx, config.stdio.server, '--stdio', `--version=${version}`, `--person=${person}`, `--team=${team}`] } } };
+  $('connectOut').innerHTML = `
+    <p>Each memory version has its own MCP endpoint; the person and default team come from the URL. Connect several versions at once to compare them in one chat.</p>
+    <h2>Claude Code</h2><pre>claude mcp add --transport http ${esc(name)} "${esc(url)}"</pre>
+    <h2>Gemini CLI</h2><p class="muted">Add to <span class="mono">~/.gemini/settings.json</span> (or <span class="mono">.gemini/settings.json</span> in a project):</p><pre>${esc(JSON.stringify(gemini, null, 2))}</pre>
+    <h2>Claude Desktop</h2><p class="muted">Claude Desktop starts local servers itself (stdio). Add this to <span class="mono">claude_desktop_config.json</span> (Settings → Developer → Edit config) and restart Desktop. Its requests show up in this timeline too.</p><pre>${esc(JSON.stringify(desktop, null, 2))}</pre>
+    <h2>Endpoint</h2><pre>${esc(url)}</pre>
+    <p class="muted">Tools: <span class="mono">remember</span> (the user's exact words; processed in the background unless <span class="mono">wait</span>), <span class="mono">recall</span>, <span class="mono">list_memories</span>, <span class="mono">whoami</span>.</p>`;
+}
+['kVersion', 'kPerson', 'kTeam'].forEach((id) => $(id).onchange = renderConnect);
+
+// ---------- chat ----------
+// The chat is the "chat" client's events (so it survives reloads); "New chat" only hides older ones.
+const chat = { person: null, mode: 'remember', since: store.get('chatSince', ''), open: new Set() };
+
+function renderChatPeople() {
+  $('chatPeople').innerHTML = config.world.people.map((p) => `<button class="person ${p.id === chat.person ? 'on' : ''}" data-id="${esc(p.id)}">${esc(p.name)}</button>`).join('');
+  $('chatPeople').querySelectorAll('button').forEach((b) => b.onclick = () => { chat.person = b.dataset.id; store.set('chatPerson', chat.person); renderChatPeople(); $('chatInput').focus(); });
+  checkMembership();
+}
+
+// Team facts from someone outside the team are rejected (by design); say so before they type.
+function checkMembership() {
+  const team = $('chatTeam').value;
+  const member = team === 'none' || config.world.memberships.some((m) => m.personId === chat.person && m.teamId === team);
+  $('chatWarn').classList.toggle('hidden', member);
+  $('chatWarn').textContent = member ? '' : `${personName(chat.person)} isn't a member of ${teamName(team)}: team facts they share will be rejected and they can't read the team's memory (edit .memory-data/mcp/world.json to add them).`;
+}
+
+function setMode(mode) {
+  chat.mode = mode;
+  $('chatMode').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
+  $('chatInput').placeholder = mode === 'ask'
+    ? 'Ask what the memory knows…  (Enter to send)'
+    : 'Say something worth remembering…  (Enter to send, Shift+Enter for a new line, start with ? to ask)';
+}
+$('chatMode').querySelectorAll('button').forEach((b) => b.onclick = () => { setMode(b.dataset.mode); $('chatInput').focus(); });
+
+function chatGroups() {
+  const mine = events.filter((e) => e.client === 'chat' && e.at >= chat.since);
+  return groupsOf(mine).sort((a, b) => a[0].at.localeCompare(b[0].at));
+}
+
+function chipHtml(e, group) {
+  const icon = e.status === 'done' ? '<span class="ok">✓</span>' : e.status === 'error' ? '<span class="bad">✗</span>' : '<span class="wait">●</span>';
+  const key = `${group}|${e.version}`;
+  return `<span class="chip ${chat.open.has(key) ? 'open' : ''}" data-key="${esc(key)}" title="${esc(e.version)}">${icon} ${esc(shortName(e.version))}: ${esc(e.status === 'error' ? e.error : summary(e))}</span>`;
+}
+
+function renderChat() {
+  const log = $('chatLog');
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  const groups = chatGroups();
+  // Re-render only on change: no flicker, and text stays selectable between polls.
+  const sig = JSON.stringify([groups.map((g) => g.map((x) => [x.id, x.status, x.answer ? 1 : 0])), [...chat.open], selected]);
+  if (sig === chat.lastSig) return;
+  chat.lastSig = sig;
+  if (!groups.length) {
+    log.innerHTML = `<div style="margin:auto; text-align:center; max-width:640px">
+      <h2>Tell the memory something, or ask it</h2>
+      <p class="muted">Each message goes to every version selected at the top. Writes are processed in the background (10–30 s); the chips show what each version did. Click a chip for the details.</p>
+      <div class="examples">${[
+        'Heads up team: the Phoenix launch is October 30, and Priya owns the payment SDK.',
+        'Update: the Phoenix go-live moved to November 5.',
+        'Just for me, not the team: my target is to finish the checkout module by October 20.',
+        '? When does Phoenix launch?',
+      ].map((t) => `<button>${esc(t)}</button>`).join('')}</div></div>`;
+    log.querySelectorAll('.examples button').forEach((b) => b.onclick = () => { $('chatInput').value = b.textContent; $('chatInput').focus(); });
+    return;
+  }
+  log.innerHTML = groups.map((g) => {
+    const e = g[0];
+    const who = `${esc(personName(e.person))} · ${esc(teamName(e.team))} · ${esc(new Date(e.at).toLocaleTimeString())}`;
+    if (e.kind === 'recall') {
+      const replies = g.map((x) => `<div class="reply"><div class="v">${esc(x.version)}${x.ms != null ? ` · ${x.ms} ms` : ''}</div>
+        ${x.status === 'error' ? `<div class="err">${esc(x.error)}</div>` : x.status !== 'done' ? '<span class="muted">thinking…</span>' : `<div>${esc(x.answer ?? `${x.memories?.length ?? 0} memories`)}</div>
+        <details data-key="${esc(`${e.group}|${x.version}|memories`)}" ${chat.open.has(`${e.group}|${x.version}|memories`) ? 'open' : ''}><summary>${x.memories?.length ?? 0} memories</summary>${memoryTable(x.memories ?? [])}</details>`}</div>`).join('');
+      return `<div class="meta">${who}</div><div class="msg ask">${esc(e.query?.text)}</div><div class="replies">${replies}</div>`;
+    }
+    const text = (e.message?.turns ?? []).map((t) => t.content).join('\n');
+    const open = g.filter((x) => chat.open.has(`${e.group}|${x.version}`));
+    const steps = open.map((x) => `<div class="col"><h3>${esc(x.version)}</h3>${x.error ? `<div class="err">${esc(x.error)}</div>` : stepsHtml(x)}</div>`).join('');
+    return `<div class="meta">${who}${e.message?.kind === 'agent' ? ' · inferred by an agent' : ''}</div>
+      <div class="msg ${e.message?.kind === 'agent' ? 'agent' : ''}">${esc(text)}</div>
+      <div class="chips">${g.map((x) => chipHtml(x, e.group)).join('')}</div>
+      ${steps ? `<div class="steps cols">${steps}</div>` : ''}`;
+  }).join('');
+  log.querySelectorAll('.chip').forEach((c) => c.onclick = () => {
+    chat.open.has(c.dataset.key) ? chat.open.delete(c.dataset.key) : chat.open.add(c.dataset.key);
+    renderChat();
+  });
+  log.querySelectorAll('details[data-key]').forEach((d) => d.ontoggle = () => {
+    d.open ? chat.open.add(d.dataset.key) : chat.open.delete(d.dataset.key);
+    chat.lastSig = null;
+  });
+  if (atBottom) log.scrollTop = log.scrollHeight;
+}
+
+async function sendChat() {
+  const raw = $('chatInput').value.trim();
+  if (!raw) return;
+  if (!selected.length) return alert('Select at least one version at the top.');
+  const asking = chat.mode === 'ask' || raw.startsWith('?');
+  const text = asking ? raw.replace(/^\?\s*/, '') : raw;
+  if (!text) return;
+  $('chatInput').value = '';
+  autosize();
+  const base = { versions: selected, person: chat.person, team: $('chatTeam').value, client: 'chat' };
+  try {
+    if (asking) await api('/api/recall', { body: { ...base, query: text, answer: true, wait: false } });
+    else {
+      const agent = $('chatAgent').checked;
+      await api('/api/remember', { body: { ...base, kind: agent ? 'agent' : 'user', agent: agent ? 'agent' : 'chat', turns: [{ role: agent ? 'note' : 'user', content: text }] } });
+    }
+    await poll();
+    $('chatLog').scrollTop = $('chatLog').scrollHeight;
+  } catch (error) { alert(error.message); $('chatInput').value = raw; }
+}
+
+function autosize() {
+  const box = $('chatInput');
+  box.style.height = 'auto';
+  box.style.height = `${Math.min(box.scrollHeight, 200)}px`;
+}
+$('chatInput').oninput = autosize;
+$('chatInput').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(); } };
+$('chatSend').onclick = sendChat;
+$('chatTeam').onchange = () => { store.set('chatTeam', $('chatTeam').value); checkMembership(); };
+$('chatNew').onclick = () => { chat.since = new Date().toISOString(); store.set('chatSince', chat.since); renderChat(); };
+
+// ---------- graph ----------
+// Entities as nodes, facts between two entities as arrows; facts about a single entity ("launches Nov 30")
+// are listed on it rather than drawn as loops. A small force layout keeps positions across refreshes.
+const KIND_COLORS = { person: '#2f6fdf', team: '#0f8a8a', project: '#7c3aed', client: '#d97706', service: '#16a34a', deliverable: '#db2777', other: '#6b7280' };
+const STATUS_STYLE = { current: { color: '#8a94a3', dash: '' }, disputed: { color: '#c53030', dash: '' }, proposed: { color: '#7c3aed', dash: '5 4' }, superseded: { color: '#b8c0cc', dash: '2 4' } };
+const graph = { data: null, pos: new Map(), view: { x: 0, y: 0, k: 1 }, selected: null, drag: null };
+const relationLabel = (r) => String(r ?? '').toLowerCase().replace(/_/g, ' ');
+
+function prepareGraph(raw) {
+  const nodes = new Map(raw.nodes.map((n) => [n.id, { ...n, facts: [], out: [], in: [] }]));
+  const links = [];
+  for (const e of raw.edges) {
+    const s = nodes.get(e.source), t = nodes.get(e.target);
+    if (!s || !t) continue;
+    if (e.source === e.target) s.facts.push(e);
+    else { links.push(e); s.out.push(e); t.in.push(e); }
+  }
+  const shown = [...nodes.values()].filter((n) => n.facts.length || n.out.length || n.in.length);
+  return { nodes: shown, byId: nodes, links, hidden: nodes.size - shown.length };
+}
+
+function graphSize() {
+  const box = $('gSvg').getBoundingClientRect();
+  return { w: box.width || 900, h: box.height || 600 };
+}
+
+function layoutGraph(iterations = 320) {
+  const { nodes, links } = graph.data;
+  const { w, h } = graphSize();
+  for (const n of nodes) {
+    if (graph.pos.has(n.id)) continue;
+    // Start new entities next to a placed neighbour, if any.
+    const near = [...n.out.map((e) => e.target), ...n.in.map((e) => e.source)].map((id) => graph.pos.get(id)).find(Boolean);
+    graph.pos.set(n.id, near ? { x: near.x + (Math.random() - 0.5) * 80, y: near.y + (Math.random() - 0.5) * 80 } : { x: w / 2 + (Math.random() - 0.5) * w * 0.6, y: h / 2 + (Math.random() - 0.5) * h * 0.6 });
+  }
+  const P = nodes.map((n) => graph.pos.get(n.id));
+  const index = new Map(nodes.map((n, i) => [n.id, i]));
+  const V = nodes.map(() => ({ x: 0, y: 0 }));
+  for (let it = 0; it < iterations; it++) {
+    const alpha = 1 - it / iterations;
+    for (let i = 0; i < P.length; i++) {
+      for (let j = i + 1; j < P.length; j++) {
+        let dx = P[i].x - P[j].x, dy = P[i].y - P[j].y;
+        const d2 = dx * dx + dy * dy + 0.01;
+        if (d2 > 160000) continue;
+        const f = (2400 / d2) * alpha;
+        dx *= f; dy *= f;
+        V[i].x += dx; V[i].y += dy; V[j].x -= dx; V[j].y -= dy;
+      }
+    }
+    for (const e of links) {
+      const a = index.get(e.source), b = index.get(e.target);
+      const dx = P[b].x - P[a].x, dy = P[b].y - P[a].y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const f = ((d - 130) / d) * 0.03 * alpha;
+      V[a].x += dx * f; V[a].y += dy * f; V[b].x -= dx * f; V[b].y -= dy * f;
+    }
+    for (let i = 0; i < P.length; i++) {
+      V[i].x += (w / 2 - P[i].x) * 0.006 * alpha;
+      V[i].y += (h / 2 - P[i].y) * 0.006 * alpha;
+      if (graph.drag?.id === nodes[i].id) continue;
+      P[i].x += Math.max(-30, Math.min(30, V[i].x));
+      P[i].y += Math.max(-30, Math.min(30, V[i].y));
+      V[i].x *= 0.6; V[i].y *= 0.6;
+    }
+  }
+}
+
+const nodeRadius = (n) => 7 + Math.min(11, Math.sqrt(n.facts.length + n.out.length + n.in.length) * 2.6);
+
+// Zoom and pan so every entity (with its label) is in view.
+function fitView() {
+  const pts = graph.data.nodes.map((n) => graph.pos.get(n.id));
+  if (!pts.length) return;
+  const { w, h } = graphSize();
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const minX = Math.min(...xs) - 70, maxX = Math.max(...xs) + 70, minY = Math.min(...ys) - 40, maxY = Math.max(...ys) + 50;
+  const k = Math.min(1.6, Math.max(0.2, Math.min(w / (maxX - minX), h / (maxY - minY))));
+  graph.view = { k, x: w / 2 - (k * (minX + maxX)) / 2, y: h / 2 - (k * (minY + maxY)) / 2 };
+}
+
+function renderGraph() {
+  const svg = $('gSvg');
+  if (!graph.data) return;
+  const { nodes, links, byId } = graph.data;
+  const find = $('gFind').value.trim().toLowerCase();
+  const match = (n) => !find || n.name.toLowerCase().includes(find) || n.aliases.some((a) => a.includes(find));
+  const showLabels = $('gLabels').checked;
+  // Arrows between the same two entities fan out so each stays clickable.
+  const pairs = new Map();
+  for (const e of links) {
+    const key = [e.source, e.target].sort().join('|');
+    pairs.set(key, [...(pairs.get(key) ?? []), e]);
+  }
+  const edgeSvg = [];
+  for (const group of pairs.values()) {
+    group.forEach((e, i) => {
+      const s = graph.pos.get(e.source), t = graph.pos.get(e.target);
+      const dx = t.x - s.x, dy = t.y - s.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const flip = e.source < e.target ? 1 : -1;
+      const offset = (i - (group.length - 1) / 2) * 28 * flip;
+      const cx = (s.x + t.x) / 2 - (dy / d) * offset, cy = (s.y + t.y) / 2 + (dx / d) * offset;
+      // End the arrow at the target's edge.
+      const ex = t.x - cx, ey = t.y - cy, el = Math.sqrt(ex * ex + ey * ey) || 1, r = nodeRadius(byId.get(e.target)) + 3;
+      const tx = t.x - (ex / el) * r, ty = t.y - (ey / el) * r;
+      const style = STATUS_STYLE[e.status] ?? STATUS_STYLE.current;
+      const dim = find && !(match(byId.get(e.source)) || match(byId.get(e.target)));
+      const path = `M${s.x.toFixed(1)},${s.y.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${tx.toFixed(1)},${ty.toFixed(1)}`;
+      const lx = 0.25 * s.x + 0.5 * cx + 0.25 * t.x, ly = 0.25 * s.y + 0.5 * cy + 0.25 * t.y;
+      const sel = graph.selected?.type === 'edge' && graph.selected.id === e.id;
+      edgeSvg.push(`<g class="${dim ? 'dim' : ''}"><path class="gedge ${sel ? 'sel' : ''}" d="${path}" stroke="${style.color}" stroke-dasharray="${style.dash}" marker-end="url(#arrow-${esc(e.status)})"></path>
+        <path class="gedge-hit" data-edge="${esc(e.id)}" d="${path}"><title>${esc(e.text)}</title></path>
+        ${showLabels ? `<text class="gedge-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle">${esc(relationLabel(e.relation))}</text>` : ''}</g>`);
+    });
+  }
+  const nodeSvg = nodes.map((n) => {
+    const p = graph.pos.get(n.id), r = nodeRadius(n);
+    const sel = graph.selected?.type === 'node' && graph.selected.id === n.id;
+    const facts = n.facts.filter((f) => f.status !== 'superseded').length;
+    return `<g class="gnode ${sel ? 'sel' : ''} ${match(n) ? '' : 'dim'}" data-node="${esc(n.id)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})">
+      <circle r="${r.toFixed(1)}" fill="${KIND_COLORS[n.kind] ?? KIND_COLORS.other}"><title>${esc(n.name)} (${esc(n.kind)})</title></circle>
+      ${facts ? `<text class="count" text-anchor="middle" dy="3">${facts}</text>` : ''}
+      <text text-anchor="middle" y="${(r + 13).toFixed(1)}">${esc(n.name)}</text></g>`;
+  }).join('');
+  const markers = Object.entries(STATUS_STYLE).map(([status, s]) => `<marker id="arrow-${status}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${s.color}"></path></marker>`).join('');
+  const { x, y, k } = graph.view;
+  svg.innerHTML = `<defs>${markers}</defs><g transform="translate(${x},${y}) scale(${k})">${edgeSvg.join('')}${nodeSvg}</g>`;
+}
+
+function factLine(e) {
+  const when = e.validFrom ? `${time(e.validFrom)}${e.validTo ? ` → ${time(e.validTo)}` : ''}` : '';
+  return `<div class="step"><span class="badge b-${e.status === 'current' ? 'new' : e.status === 'superseded' ? 'duplicate' : e.status}">${esc(e.status)}</span><span>${esc(e.text)}<div class="muted" style="font-size:11px">${esc(relationLabel(e.relation))}${e.author ? ` · by ${esc(e.author)}` : ''}${when ? ` · ${esc(when)}` : ''} · ${esc(e.scope)}</div></span></div>`;
+}
+
+function renderGraphSide() {
+  const side = $('gSide');
+  const sel = graph.selected;
+  if (!sel || !graph.data) { side.innerHTML = '<p class="muted">Click an entity or a fact. Scroll to zoom, drag the background to pan, drag entities to arrange them, double-click to fit.</p>'; return; }
+  const { byId, links } = graph.data;
+  const nameLink = (id) => `<span class="linkname" data-goto="${esc(id)}">${esc(byId.get(id)?.name ?? id)}</span>`;
+  if (sel.type === 'edge') {
+    const e = links.find((x) => x.id === sel.id);
+    if (!e) { side.innerHTML = ''; return; }
+    side.innerHTML = `<h2>${nameLink(e.source)} → ${esc(relationLabel(e.relation))} → ${nameLink(e.target)}</h2>${factLine(e)}`;
+  } else {
+    const n = byId.get(sel.id);
+    if (!n) { side.innerHTML = ''; return; }
+    const relations = [...n.out.map((e) => ({ e, other: e.target, dir: '→' })), ...n.in.map((e) => ({ e, other: e.source, dir: '←' }))];
+    side.innerHTML = `<h2 style="margin-bottom:4px">${esc(n.name)}</h2>
+      <div class="muted" style="font-size:12px; margin-bottom:10px"><span class="pill">${esc(n.kind)}</span>${n.aliases.length ? ` also: ${n.aliases.map(esc).join(', ')}` : ''}</div>
+      <h2>Facts about it (${n.facts.length})</h2>${n.facts.map(factLine).join('') || '<p class="muted">None.</p>'}
+      <h2 style="margin-top:14px">Links (${relations.length})</h2>${relations.map(({ e, other, dir }) => `<div style="margin-bottom:6px"><span class="muted">${dir} ${esc(relationLabel(e.relation))}</span> ${nameLink(other)}${factLine(e)}</div>`).join('') || '<p class="muted">None.</p>'}`;
+  }
+  side.querySelectorAll('[data-goto]').forEach((el) => el.onclick = () => { graph.selected = { type: 'node', id: el.dataset.goto }; renderGraph(); renderGraphSide(); });
+}
+
+function renderLegend() {
+  $('gLegend').innerHTML = Object.entries(KIND_COLORS).map(([k, c]) => `<span><i style="background:${c}"></i>${k}</span>`).join('')
+    + Object.entries(STATUS_STYLE).map(([s, st]) => `<span><b style="border-color:${st.color}; border-top-style:${st.dash ? 'dashed' : 'solid'}"></b>${s}</span>`).join('')
+    + '<span>number in a circle = facts about that entity</span>';
+}
+
+async function loadGraph(relayout = false) {
+  const version = $('gVersion').value;
+  if (!version) return;
+  $('gStats').textContent = 'loading…';
+  const params = new URLSearchParams({ version, person: $('gPerson').value, team: $('gTeam').value, ...($('gAsOf').value ? { asOf: localToIso($('gAsOf').value) } : {}), ...($('gHistory').checked ? { history: '1' } : {}) });
+  try {
+    const raw = await api(`/api/graph?${params}`);
+    if (!raw.supported) {
+      graph.data = null;
+      $('gSvg').innerHTML = `<text x="24" y="40" fill="currentColor">${esc(version)} keeps no entity graph (it stores raw messages). Pick a temporal-kg or claims-pg version.</text>`;
+      $('gStats').textContent = '';
+      renderWorkingMemory();
+      return;
+    }
+    if (relayout || graph.version !== version) graph.pos.clear();
+    graph.version = version;
+    graph.data = prepareGraph(raw);
+    const fresh = graph.pos.size === 0;
+    layoutGraph(fresh ? 320 : 120);
+    if (fresh) fitView();
+    $('gStats').textContent = `${graph.data.nodes.length} entities, ${graph.data.links.length} links, ${raw.edges.length - graph.data.links.length} facts on entities${graph.data.hidden ? ` (${graph.data.hidden} entities without facts hidden)` : ''}`;
+    renderGraph();
+    renderGraphSide();
+  } catch (error) { $('gStats').textContent = error.message; }
+  renderWorkingMemory();
+}
+
+// Messages waiting in working memory (versions with +consolidate), shown under the graph.
+async function renderWorkingMemory() {
+  const params = new URLSearchParams({ version: $('gVersion').value, person: $('gPerson').value, team: $('gTeam').value });
+  try {
+    const wm = await api(`/api/working-memory?${params}`);
+    $('gWorking').classList.toggle('hidden', !wm.supported);
+    $('gConsolidate').classList.toggle('hidden', !wm.supported);
+    $('gDream').classList.toggle('hidden', !wm.supported);
+    if (!wm.supported) return;
+    $('gWorking').innerHTML = `<h2>Working memory (${wm.items.length} waiting)</h2>
+      <p class="muted" style="margin-top:-4px; font-size:12px">Said but not yet turned into entities and facts. Consolidated automatically after ${wm.settings?.batchSize ?? 12} messages or ${wm.settings?.maxAgeMinutes ?? 10} minutes per buffer; recall already sees the ${wm.settings?.readSlots ?? 5} most relevant.</p>
+      ${wm.items.length ? `<table><tr><th>When</th><th>Who</th><th>Buffer</th><th>Message</th></tr>${wm.items.map((w) => `<tr><td class="muted" style="white-space:nowrap">${esc(time(w.at))}</td><td>${esc(w.actor)}</td><td class="mono">${esc(w.scope)}</td><td>${esc(w.text)}</td></tr>`).join('')}</table>` : '<p class="muted">Nothing waiting.</p>'}`;
+  } catch { $('gWorking').classList.add('hidden'); }
+}
+
+(() => {
+  const svg = $('gSvg');
+  const toGraph = (ev) => { const b = svg.getBoundingClientRect(); return { x: (ev.clientX - b.left - graph.view.x) / graph.view.k, y: (ev.clientY - b.top - graph.view.y) / graph.view.k }; };
+  svg.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    const b = svg.getBoundingClientRect(), sx = ev.clientX - b.left, sy = ev.clientY - b.top;
+    const k = Math.min(4, Math.max(0.2, graph.view.k * (1 - ev.deltaY * 0.0015)));
+    graph.view.x = sx - ((sx - graph.view.x) * k) / graph.view.k;
+    graph.view.y = sy - ((sy - graph.view.y) * k) / graph.view.k;
+    graph.view.k = k;
+    renderGraph();
+  }, { passive: false });
+  svg.addEventListener('pointerdown', (ev) => {
+    const nodeEl = ev.target.closest('[data-node]');
+    const edgeEl = ev.target.closest('[data-edge]');
+    if (edgeEl) { graph.selected = { type: 'edge', id: edgeEl.dataset.edge }; renderGraph(); renderGraphSide(); return; }
+    svg.setPointerCapture(ev.pointerId);
+    graph.drag = nodeEl ? { id: nodeEl.dataset.node, moved: false } : { pan: true, sx: ev.clientX, sy: ev.clientY, vx: graph.view.x, vy: graph.view.y, moved: false };
+    if (!nodeEl) svg.classList.add('panning');
+  });
+  svg.addEventListener('pointermove', (ev) => {
+    const d = graph.drag;
+    if (!d) return;
+    d.moved = true;
+    if (d.pan) { graph.view.x = d.vx + ev.clientX - d.sx; graph.view.y = d.vy + ev.clientY - d.sy; }
+    else graph.pos.set(d.id, toGraph(ev));
+    renderGraph();
+  });
+  svg.addEventListener('pointerup', () => {
+    const d = graph.drag;
+    graph.drag = null;
+    svg.classList.remove('panning');
+    if (d && !d.moved) {
+      graph.selected = d.pan ? null : { type: 'node', id: d.id };
+      renderGraph();
+      renderGraphSide();
+    }
+  });
+  svg.addEventListener('dblclick', () => { if (graph.data) { fitView(); renderGraph(); } });
+  for (const kind of ['consolidate', 'dream']) {
+    const button = $(kind === 'consolidate' ? 'gConsolidate' : 'gDream');
+    button.onclick = async () => {
+      button.disabled = true;
+      $('gStats').textContent = kind === 'consolidate' ? 'consolidating…' : 'dreaming…';
+      try {
+        const event = await api(`/api/${kind}`, { body: { version: $('gVersion').value, person: $('gPerson').value, team: $('gTeam').value } });
+        if (event.status === 'error') alert(event.error);
+        else {
+          graph.selected = null;
+          await loadGraph();
+          $('gSide').innerHTML = `<h2>${kind === 'consolidate' ? 'Consolidated' : 'Dreamt'} in ${event.ms} ms</h2>${stepsHtml(event)}`;
+        }
+      } catch (error) { alert(error.message); }
+      finally { button.disabled = false; poll(); }
+    };
+  }
+  $('gLoad').onclick = () => loadGraph();
+  $('gRelayout').onclick = () => { graph.view = { x: 0, y: 0, k: 1 }; loadGraph(true); };
+  ['gVersion', 'gPerson', 'gTeam', 'gAsOf', 'gHistory'].forEach((id) => $(id).onchange = () => loadGraph());
+  $('gLabels').onchange = renderGraph;
+  $('gFind').oninput = renderGraph;
+})();
+
+// ---------- start ----------
+(async () => {
+  config = await api('/api/config');
+  selected = store.get('versions', config.featured.slice(0, 3)).filter((v) => config.versions.includes(v));
+  renderVersions();
+  fillIdentity(config.world.defaults.person, config.world.defaults.team);
+  const known = (id) => config.world.people.some((p) => p.id === id);
+  chat.person = known(store.get('chatPerson', '')) ? store.get('chatPerson', '') : config.world.defaults.person;
+  renderChatPeople();
+  $('chatTeam').innerHTML = $('cTeam').innerHTML;
+  $('chatTeam').value = store.get('chatTeam', config.world.defaults.team ?? 'none');
+  if (!$('chatTeam').value) $('chatTeam').value = config.world.defaults.team ?? 'none';
+  checkMembership();
+  addTurn('user');
+  $('batch').value = store.get('batch', JSON.stringify(EXAMPLE, null, 2));
+  const tab = store.get('tab', 'chat');
+  document.querySelector(`nav button[data-tab="${tab}"]`)?.click();
+  await poll();
+  if (tab === 'chat') { $('chatLog').scrollTop = $('chatLog').scrollHeight; $('chatInput').focus(); }
+  schedulePoll();
+})();
+</script>
+</body>
+</html>
