@@ -29,6 +29,8 @@ require('dotenv').config({ quiet: true });
 process.env.MEMORY_PG_DB_SUFFIX ??= '_mcp';
 // In a team, what people say about their own work and availability is for the team (core/scope-policy).
 process.env.MEMORY_SCOPE_POLICY ??= 'team-context';
+// Working memory is filed by a timer here (startFilingTimer), so reads never wait for it.
+process.env.MEMORY_WM_CONSOLIDATE_ON_READ ??= 'false';
 process.env.MEMORY_NEO4J_URL = process.env.MEMORY_MCP_NEO4J_URL || 'bolt://127.0.0.1:7694';
 
 import { createConnection } from 'net';
@@ -126,6 +128,7 @@ async function main() {
     }
 
     const service = new MemoryService();
+    if (process.env.MEMORY_WM_CONSOLIDATE_ON_READ === 'false') service.startFilingTimer(APPROACH_NAMES.filter((v) => v.includes('+consolidate')));
     const shutdown = async () => {
         await service.close();
         process.exit(0);

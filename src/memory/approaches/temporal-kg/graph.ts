@@ -362,6 +362,16 @@ export class Graph {
         );
     }
 
+    // Buffers (scopes ending in `suffix`) whose oldest waiting message is at or before `before`.
+    async overdueBufferScopes(before: string, suffix = ''): Promise<Scope[]> {
+        const rows = await this.run<{ scope: Scope }>(
+            `MATCH (w:Buffered {done: false}) WHERE w.scope ENDS WITH $suffix
+             WITH w.scope AS scope, min(w.at) AS oldest WHERE oldest <= $before RETURN scope`,
+            { before, suffix }
+        );
+        return rows.map((r) => r.scope);
+    }
+
     async pendingBuffered(scope: Scope): Promise<{ id: string; at: string; payload: string }[]> {
         return this.run(
             'MATCH (w:Buffered {scope: $scope, done: false}) RETURN w.id AS id, w.at AS at, w.payload AS payload ORDER BY w.at, w.id',

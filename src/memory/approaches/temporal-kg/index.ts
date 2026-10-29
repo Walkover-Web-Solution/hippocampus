@@ -54,6 +54,9 @@ export const WORKING_MEMORY = {
     maxAgeMinutes: Number(process.env.MEMORY_WM_MAX_AGE_MIN) || 10,
     // Waiting messages shown at recall, ahead of the graph's facts.
     readSlots: Number(process.env.MEMORY_WM_READ_SLOTS) || 5,
+    // Evals jump through time, so a read files overdue buffers first. A live server files them on a timer
+    // (consolidateOverdue) and turns this off, so reads never wait for filing.
+    consolidateOnRead: process.env.MEMORY_WM_CONSOLIDATE_ON_READ !== 'false',
 };
 
 // link: descriptive names whose last word is one of these ("the WebRTC product") may refer to an entity
@@ -209,6 +212,16 @@ export class TemporalKgApproach implements MemoryApproach {
     // Consolidation: the scope's waiting messages, in order, become entities and facts through one batch
     // extraction; each message's facts are then committed as if it had just arrived (its own time, author,
     // scope rules and gate decision).
+    // The background timer's job: file every buffer (scopes ending in `scopeSuffix`) whose oldest message has
+    // waited WORKING_MEMORY.maxAgeMinutes. Returns the notes of each filing.
+    async consolidateOverdue(now: Date, directory: PersonRef[], scopeSuffix = ''): Promise<string[]> {
+        if (!this.options.consolidate) return [];
+        const before = new Date(now.getTime() - WORKING_MEMORY.maxAgeMinutes * 60_000).toISOString();
+        const notes: string[] = [];
+        for (const scope of await this.db().overdueBufferScopes(before, scopeSuffix)) notes.push(...(await this.consolidate(scope, directory)));
+        return notes;
+    }
+
     async consolidate(scope: Scope, directory: PersonRef[]): Promise<string[]> {
         return this.consolidations.run([scope], async () => {
             const graph = this.db();
@@ -554,7 +567,7 @@ export class TemporalKgApproach implements MemoryApproach {
         const scopes = q.readableScopes;
         // A buffer past its maximum wait would have been consolidated by a background timer by now; do that
         // first (in production the timer runs on its own and reads never wait for it).
-        if (this.options.consolidate) {
+        if (this.options.consolidate && WORKING_MEMORY.consolidateOnRead) {
             for (const scope of scopes) {
                 const pending = await graph.pendingBuffered(scope);
                 if (pending.length && Date.parse(q.now) - Date.parse(pending[0].at) >= WORKING_MEMORY.maxAgeMinutes * 60_000) {

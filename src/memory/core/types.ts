@@ -118,6 +118,7 @@ export interface MemoryApproach {
     // buffer now, and the offline "dream" pass. Each returns notes on what it did.
     workingMemory?(scopes: Scope[]): Promise<{ id: string; scope: Scope; at: string; actor: string; text: string }[]>;
     consolidate?(scope: Scope, directory: PersonRef[]): Promise<string[]>;
+    consolidateOverdue?(now: Date, directory: PersonRef[], scopeSuffix?: string): Promise<string[]>;
     dream?(scope: Scope, directory: PersonRef[], now: Date): Promise<string[]>;
 }
 

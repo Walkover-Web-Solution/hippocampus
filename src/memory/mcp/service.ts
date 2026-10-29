@@ -288,11 +288,50 @@ export class MemoryService {
         }
     }
 
+    // Files every buffer of the version that has waited past its maximum age. It runs in the version's write
+    // queue, after any saves already waiting, so it never races them. Returns how many notes it produced.
+    fileOverdue(version: string): Promise<{ notes: number; ms: number }> {
+        const previous = this.queues.get(version) ?? Promise.resolve();
+        const done = previous.then(async () => {
+            const started = Date.now();
+            const approach = await this.approach(version);
+            if (!approach.consolidateOverdue) return { notes: 0, ms: 0 };
+            const notes = await approach.consolidateOverdue(new Date(), this.directory(this.world()).directory(), `~${version}`);
+            return { notes: notes.length, ms: Date.now() - started };
+        });
+        this.queues.set(version, done.catch(() => undefined));
+        return done;
+    }
+
+    private timer: NodeJS.Timeout | null = null;
+
+    // The working-memory timer of a live server: every minute, file whatever has waited too long, so that
+    // reads never have to. One pass at a time; a slow filing just delays the next pass.
+    startFilingTimer(versions: string[], everyMs = 60_000) {
+        let busy = false;
+        this.timer = setInterval(async () => {
+            if (busy) return;
+            busy = true;
+            try {
+                for (const version of versions) {
+                    const { notes, ms } = await this.fileOverdue(version);
+                    if (notes) console.log(`working memory: filed overdue messages for ${version} (${notes} notes, ${ms} ms)`);
+                }
+            } catch (error: any) {
+                console.error(`working memory: filing failed: ${error?.message ?? error}`);
+            } finally {
+                busy = false;
+            }
+        }, everyMs);
+        this.timer.unref();
+    }
+
     private plainMemory(version: string, m: RecalledMemory): RecalledMemory {
         return { ...m, scope: this.plain(version, m.scope) as Scope, text: this.plain(version, m.text) };
     }
 
     async close() {
+        if (this.timer) clearInterval(this.timer);
         await Promise.allSettled([...this.queues.values()]);
         for (const loading of this.approaches.values()) {
             try {
