@@ -102,6 +102,7 @@ async function main() {
     const { buildMcpServer } = await import('./tools');
     const { AccessStore, isAdmin, upsertPerson } = await import('./access');
     const { TeamOAuth, mountOAuth } = await import('./oauth');
+    const { interactions } = await import('./insights');
     const { writeFileSync } = await import('fs');
 
     const served = list(process.env.MEMORY_MCP_VERSIONS);
@@ -273,6 +274,20 @@ async function main() {
             })),
         });
     });
+    // Every interaction, for the whole team or one person (insights.ts decides what text the admin may see).
+    app.get('/admin/interactions', (req, res) => {
+        if (!adminCaller(req, res)) return;
+        const kind = req.query.kind === 'remember' || req.query.kind === 'recall' ? req.query.kind : null;
+        res.json(interactions(service.events.list(100_000), service.world(), {
+            viewer: access.personFor(bearer(req))!,
+            days: Math.min(Math.max(Number(req.query.days) || 14, 1), 90),
+            person: str(req.query.person) && req.query.person !== 'all' ? String(req.query.person) : null,
+            kind,
+            limit: Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000),
+        }));
+    });
+
+
     app.get('/admin/graph', async (req, res) => {
         if (!adminCaller(req, res)) return;
         try {
