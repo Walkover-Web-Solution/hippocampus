@@ -228,6 +228,64 @@ async function main() {
         res.json({ ...oauth.registerFixedClient(name, redirects), ...oauth.serverMetadata() });
     });
 
+    // ---- Admin views (read-only): who uses memory and how, and the memory graph as the admin sees it ----
+    // Activity carries counts, apps and times only, never what anyone said; the graph is the admin's own
+    // view (their personal memory plus their team's), so other people's personal memory stays private.
+    app.get('/admin/activity', (req, res) => {
+        if (!adminCaller(req, res)) return;
+        const days = Math.min(Math.max(Number(req.query.days) || 14, 1), 90);
+        const since = new Date(Date.now() - days * 86_400_000).toISOString();
+        const world = service.world();
+        const names = new Map(world.people.map((p) => [p.id, p.name]));
+        const events = service.events.list(100_000).filter((e) => e.source === 'mcp' && e.at >= since);
+        const people = new Map(world.people.map((p) => [p.id, {
+            id: p.id, name: p.name, email: p.email ?? null, saves: 0, recalls: 0, other: 0, errors: 0,
+            factsSaved: 0, apps: {} as Record<string, number>, firstAt: null as string | null, lastAt: null as string | null,
+        }]));
+        const daily = new Map<string, { day: string; saves: number; recalls: number }>();
+        for (let d = days - 1; d >= 0; d--) {
+            const day = new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
+            daily.set(day, { day, saves: 0, recalls: 0 });
+        }
+        const factsOf = (e: (typeof events)[number]) => (e.steps ?? []).filter((s) => s.kind === 'new' || s.kind === 'buffered' || s.kind === 'invalidated').length;
+        for (const e of events) {
+            const p = people.get(e.person);
+            const bucket = daily.get(e.at.slice(0, 10));
+            if (e.kind === 'remember') bucket && bucket.saves++;
+            if (e.kind === 'recall') bucket && bucket.recalls++;
+            if (!p) continue;
+            if (e.kind === 'remember') p.saves++, p.factsSaved += factsOf(e);
+            else if (e.kind === 'recall') p.recalls++;
+            else p.other++;
+            if (e.status === 'error') p.errors++;
+            const app = e.client ?? 'unknown';
+            p.apps[app] = (p.apps[app] ?? 0) + 1;
+            if (!p.firstAt || e.at < p.firstAt) p.firstAt = e.at;
+            if (!p.lastAt || e.at > p.lastAt) p.lastAt = e.at;
+        }
+        res.json({
+            days, since,
+            people: [...people.values()].sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? '') || a.name.localeCompare(b.name)),
+            daily: [...daily.values()],
+            recent: events.slice(0, 60).map((e) => ({
+                at: e.at, person: names.get(e.person) ?? e.person, kind: e.kind, app: e.client ?? 'unknown', status: e.status, ms: e.ms ?? null,
+                facts: e.kind === 'remember' ? factsOf(e) : null, results: e.kind === 'recall' ? (e.memories?.length ?? 0) : null,
+            })),
+        });
+    });
+    app.get('/admin/graph', async (req, res) => {
+        if (!adminCaller(req, res)) return;
+        try {
+            const caller = access.personFor(bearer(req))!;
+            const version = FEATURED_VERSIONS[0];
+            const graph = await service.graph(version, caller, undefined, null, req.query.history === '1');
+            const waiting = await service.workingMemory(version, caller, undefined);
+            res.json({ version: urlName(version), viewer: service.world().people.find((p) => p.id === caller)?.name ?? caller, ...(graph ?? { nodes: [], edges: [] }), waiting: waiting ?? [] });
+        } catch (error: any) {
+            res.status(500).json({ error: error?.message ?? String(error) });
+        }
+    });
+
     // ---- MCP (Streamable HTTP, stateless: one server per request) ----
     // Two ways in: /mcp/<version> with the token in the Authorization header, or a private link
     // /u/<token>/mcp/<version> for apps that take only a URL. A link works like a password: anyone who
