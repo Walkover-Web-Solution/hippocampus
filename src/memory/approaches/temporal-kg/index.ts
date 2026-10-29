@@ -3,7 +3,7 @@ import { getEmbedder } from '../../core/embed';
 import { actorOf, aliasKey, evidenceFound, findPerson, normalizeForAliases, peopleMentionedFuzzily } from '../../core/entities';
 import { neo4jConfig } from '../../core/env';
 import { CandidateMode, EntityCandidate, describeDecisions, excludeSiblings, findCandidates, matchDescription, matchEntity } from '../../core/entity-match';
-import { GateDecision, describeGate, gateExchange } from '../../core/gate';
+import { GateDecision, describeGate, gateOrOpen } from '../../core/gate';
 import { personalizedPageRank, queryWords, reciprocalRankFusion } from '../../core/rank';
 import { decideScope } from '../../core/scope';
 import { IngestContext, IngestResult, MemoryApproach, MemoryGraph, PersonRef, RawMessage, RecallInput, RecallResult, RecalledMemory, Scope, renderMessage, renderTurns } from '../../core/types';
@@ -155,7 +155,7 @@ export class TemporalKgApproach implements MemoryApproach {
         const actor = actorOf(msg.actorPersonId, msg.actorName, ctx.directory);
         const now = ctx.now.toISOString();
         const notes: string[] = [];
-        const gate = this.options.gate || this.options.consolidate ? await gateExchange(msg) : null;
+        const gate = this.options.gate || this.options.consolidate ? await gateOrOpen(msg) : null;
         if (gate) {
             notes.push(describeGate(gate));
             // Working memory keeps short-lived things the gate finds "not worth remembering" long-term ("out

@@ -109,6 +109,8 @@ export async function extractBatch(input: { messages: BatchMessage[]; directory:
         'Messages:',
         ...input.messages.map(({ msg, actor }, i) => [
             `#${i} — time ${msg.occurredAt}; speaker ${actor.name}; active team ${teamLabel(msg)}; app ${msg.actorAgent}${msg.kind === 'agent' ? " (notes an agent inferred, not the speaker's own words)" : ''}`,
+            // Earlier turns only resolve references ("he", "the migration"); facts come from the message itself.
+            ...(msg.context.length ? [`(context only, don't extract from it:)\n${renderTurns(msg.context)}`] : []),
             renderTurns(msg.turns),
         ].join('\n')),
     ].join('\n');

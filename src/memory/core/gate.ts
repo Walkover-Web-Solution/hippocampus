@@ -45,6 +45,8 @@ export interface GateDecision {
     // Record every fact from this exchange as proposed (unconfirmed).
     proposed: boolean;
     probabilities: Record<keyof typeof QUESTIONS, number>;
+    // Set when Jev couldn't be asked and the exchange went through unfiltered.
+    unavailable?: string;
 }
 
 export function applyGate(p: GateDecision['probabilities']): GateDecision {
@@ -81,7 +83,22 @@ export async function gateExchange(msg: RawMessage): Promise<GateDecision> {
     });
 }
 
+// The gate only filters, so when Jev can't be reached (spend limit, outage) the exchange is extracted
+// as if the gate had said so, rather than lost.
+export async function gateOrOpen(msg: RawMessage, ask: (msg: RawMessage) => Promise<GateDecision> = gateExchange): Promise<GateDecision> {
+    try {
+        return await ask(msg);
+    } catch (error: any) {
+        return {
+            skip: null, forcePersonal: false, proposed: false,
+            probabilities: { memorable: 1, hypothetical: 0, private_only: 0, assistant_only: 0 },
+            unavailable: String(error?.message ?? error).slice(0, 200),
+        };
+    }
+}
+
 export function describeGate(g: GateDecision): string {
+    if (g.unavailable) return `gate: unavailable, extracting unfiltered (${g.unavailable})`;
     const p = g.probabilities;
     const probs = `memorable ${p.memorable.toFixed(2)}, hypothetical ${p.hypothetical.toFixed(2)}, private ${p.private_only.toFixed(2)}, assistant-only ${p.assistant_only.toFixed(2)}`;
     if (g.skip) return `gate: skip (${g.skip}; ${probs})`;

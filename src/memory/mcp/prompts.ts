@@ -6,7 +6,8 @@
 export interface PromptSet {
     serverName: (version: string) => string;
     instructions: string;
-    remember: { description: string; userMessage: string; assistantMessage: string; inferred: string; wait: string };
+    // context: offered from v3 on, for naming who or what the message refers to.
+    remember: { description: string; userMessage: string; context?: string; assistantMessage: string; inferred: string; wait: string };
     recall: { description: string; query: string; asOf: string; includeUnconfirmed: string; limit: string };
     team: string;
     list: string;
@@ -89,10 +90,29 @@ In results, "superseded" means no longer true, "proposed" unconfirmed and "dispu
     statusLegend: 'superseded = no longer true (history); proposed = unconfirmed; disputed = conflicting reports. Say so rather than picking one.',
 };
 
-export const PROMPT_SETS: Record<string, PromptSet> = { v1, v2 };
+// v2 plus names: memory can't tell who "he" or "it" is, so agents name people and things in full, in
+// recall queries and, for remember, in a context field next to the user's own words.
+const v3: PromptSet = {
+    ...v2,
+    instructions: v2.instructions
+        .replace('- Not needed for general knowledge,', '- Use full names in queries, not he, she, they or it.\n- Not needed for general knowledge,')
+        .replace("- Pass the user's own words in `user_message`, not a summary.", "- Pass the user's own words in `user_message`, not a summary. When they say he, she, they, it or this, name who or what in `context` (\"he = Rahul Verma\")."),
+    remember: {
+        ...v2.remember,
+        description: v2.remember.description.replace(' Returns immediately;', ' When the message says he, she, they, it or this, name who or what it means in context. Returns immediately;'),
+        context: 'Who or what the message refers to, by full name, when it says he, she, they, it, this or uses a nickname: e.g. "he = Rahul Verma; the migration = the billing migration to Postgres". Leave it out when the message already names everything.',
+    },
+    recall: {
+        ...v2.recall,
+        query: 'A short, specific question with full names, not pronouns, e.g. "When is Rahul Verma\'s billing migration due?"',
+    },
+};
 
-// v2 won the tool-call eval on 2026-10-29 (held-out: 99% of needed saves vs 91%).
-export function promptSet(name = process.env.MEMORY_MCP_PROMPTS || 'v2'): PromptSet {
+export const PROMPT_SETS: Record<string, PromptSet> = { v1, v2, v3 };
+
+// v2 won the tool-call eval on 2026-10-29 (held-out: 99% of needed saves vs 91%); v3 adds full names
+// (saves that name who "he" or "it" is: 30-80% with v2, 100% with v3 on dev).
+export function promptSet(name = process.env.MEMORY_MCP_PROMPTS || 'v3'): PromptSet {
     const set = PROMPT_SETS[name];
     if (!set) throw new Error(`Unknown MEMORY_MCP_PROMPTS "${name}". Known: ${Object.keys(PROMPT_SETS).join(', ')}`);
     return set;

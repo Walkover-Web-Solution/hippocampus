@@ -35,16 +35,21 @@ export function buildMcpServer(service: MemoryService, connection: Connection, p
         description: prompts.remember.description,
         inputSchema: {
             user_message: z.string().min(1).describe(prompts.remember.userMessage),
+            ...(prompts.remember.context ? { context: z.string().optional().describe(prompts.remember.context) } : {}),
             assistant_message: z.string().optional().describe(prompts.remember.assistantMessage),
             inferred: z.boolean().optional().describe(prompts.remember.inferred),
             team: teamParam,
             wait: z.boolean().optional().describe(prompts.remember.wait),
         },
-    }, async ({ user_message, assistant_message, inferred, team: teamOverride, wait }) => {
+    }, async (args) => {
+        const { user_message, assistant_message, inferred, team: teamOverride, wait } = args;
+        const context = typeof (args as { context?: unknown }).context === 'string' ? (args as { context: string }).context.trim() : '';
         const turns = [{ role: 'user' as const, content: user_message }, ...(assistant_message ? [{ role: 'assistant' as const, content: assistant_message }] : [])];
         const { event, done } = service.remember({
             version: connection.version, person: connection.person, team: team(teamOverride), kind: inferred ? 'agent' : 'user',
             agent: client() ?? 'mcp', turns, source: connection.source, client: client(),
+            // The agent's note on who or what the message refers to: earlier conversation, used only to resolve references.
+            context: context ? [{ role: 'assistant' as const, content: `In this conversation: ${context}` }] : undefined,
         });
         if (!wait) return { content: [{ type: 'text', text: prompts.queued(connection.version, event.id) }] };
         const result = await done;
