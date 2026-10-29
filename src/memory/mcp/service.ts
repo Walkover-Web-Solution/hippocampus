@@ -223,7 +223,8 @@ export class MemoryService {
 
     // The version's entities and the facts between them, as the person sees them (null: no graph to show).
     // "Now" is the current time or the latest write, whichever is later, as for recall.
-    async graph(version: string, person?: string, team?: string | null, asOf?: string | null, history = false): Promise<MemoryGraph | null> {
+    // everyone: every person's personal memory and every team's (the admin's see-all view while testing).
+    async graph(version: string, person?: string, team?: string | null, asOf?: string | null, history = false, everyone = false): Promise<MemoryGraph | null> {
         const { person: who, teamId } = this.identity(person, team);
         const approach = await this.approach(version);
         if (!approach.inspectGraph) return null;
@@ -231,7 +232,7 @@ export class MemoryService {
         const realNow = new Date().toISOString();
         const at = new Date(asOf ?? (latest && latest > realNow ? latest : realNow));
         const world = this.world();
-        const scopes = readableScopes(this.directory(world), who.id, teamId, at).map((s) => this.ns(version, s));
+        const scopes = (everyone ? this.allScopes(world) : readableScopes(this.directory(world), who.id, teamId, at)).map((s) => this.ns(version, s));
         const g = await approach.inspectGraph(scopes, at, history);
         const plain = (text: string) => this.plain(version, text);
         const names = new Map(world.people.map((p) => [p.id, p.name]));
@@ -255,11 +256,12 @@ export class MemoryService {
 
     // What waits in working memory for this person: the active team's buffer and their own (null: the
     // version has no working memory).
-    async workingMemory(version: string, person?: string, team?: string | null) {
+    async workingMemory(version: string, person?: string, team?: string | null, everyone = false) {
         const { person: who, teamId } = this.identity(person, team);
         const approach = await this.approach(version);
         if (!approach.workingMemory) return null;
-        const scopes = readableScopes(this.directory(this.world()), who.id, teamId, new Date()).map((s) => this.ns(version, s));
+        const world = this.world();
+        const scopes = (everyone ? this.allScopes(world) : readableScopes(this.directory(world), who.id, teamId, new Date())).map((s) => this.ns(version, s));
         return (await approach.workingMemory(scopes)).map((w) => ({ ...w, id: this.plain(version, w.id), scope: this.plain(version, w.scope) as Scope }));
     }
 
@@ -324,6 +326,10 @@ export class MemoryService {
             }
         }, everyMs);
         this.timer.unref();
+    }
+
+    private allScopes(world: World): Scope[] {
+        return [...world.people.map((p) => `personal:${p.id}` as Scope), ...world.teams.map((t) => `team:${t.id}` as Scope)];
     }
 
     private plainMemory(version: string, m: RecalledMemory): RecalledMemory {

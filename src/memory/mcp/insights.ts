@@ -9,13 +9,15 @@ const FACT = /^(?:#\d+ ([^:]+): )?((?:personal|team):\S+) (new|proposed) fact(?:
 const DUP = /^(?:#\d+ ([^:]+): )?((?:personal|team):\S+) duplicate of existing: (.*)$/s;
 const WAIT = /^working memory \(((?:personal|team):[^)]+)\)/;
 
-export interface InteractionOptions { viewer: string; days: number; person?: string | null; kind?: 'remember' | 'recall' | null; limit?: number; now?: number }
+// seeAll: show everything to the admin, personal memory included (testing with a small team; MEMORY_ADMIN_SEE_ALL).
+export interface InteractionOptions { viewer: string; days: number; person?: string | null; kind?: 'remember' | 'recall' | null; limit?: number; now?: number; seeAll?: boolean }
 
 export function interactions(all: MemoryEvent[], world: World, opts: InteractionOptions) {
     const now = opts.now ?? Date.now();
     const since = new Date(now - opts.days * 86_400_000).toISOString();
     const names = new Map(world.people.map((p) => [p.id, p.name]));
-    const readable = new Set([`personal:${opts.viewer}`, ...world.memberships.filter((m) => m.personId === opts.viewer).map((m) => `team:${m.teamId}`)]);
+    const ownScopes = new Set([`personal:${opts.viewer}`, ...world.memberships.filter((m) => m.personId === opts.viewer).map((m) => `team:${m.teamId}`)]);
+    const readable = { has: (scope: string) => !!opts.seeAll || ownScopes.has(scope) };
     const side = (scope: string) => (scope.startsWith('team:') ? 'team' as const : 'personal' as const);
     const nameOf = (id: string) => names.get(id) ?? id;
 
@@ -38,20 +40,20 @@ export function interactions(all: MemoryEvent[], world: World, opts: Interaction
         };
         if (e.kind === 'remember') {
             const filedTo = waitingIn ? side(waitingIn) : facts[0]?.scope ?? null;
-            const visible = e.person === opts.viewer || (waitingIn ? readable.has(waitingIn) : filedTo === 'team' && facts.every((f) => f.scope === 'team' && f.text !== null));
+            const visible = !!opts.seeAll || e.person === opts.viewer || (waitingIn ? readable.has(waitingIn) : filedTo === 'team' && facts.every((f) => f.scope === 'team' && f.text !== null));
             const said = (e.message?.turns ?? []).filter((t) => t.role === 'user').map((t) => t.content).join('\n');
             return { ...base, filedTo, skipped, waiting: !!waitingIn && !skipped, visible, message: visible ? said : null, query: null, facts, results: null };
         }
         const mems = e.memories ?? [];
         const shown = mems.filter((m) => readable.has(m.scope)).map((m) => ({ text: m.text, status: m.status, scope: side(m.scope), author: m.author ?? null }));
         // Someone else's question is shown only when everything it found was team memory the viewer can read.
-        const visible = e.person === opts.viewer || (mems.length > 0 && mems.every((m) => m.scope.startsWith('team:') && readable.has(m.scope)));
+        const visible = !!opts.seeAll || e.person === opts.viewer || (mems.length > 0 && mems.every((m) => m.scope.startsWith('team:') && readable.has(m.scope)));
         return {
             ...base, filedTo: null, skipped: null, waiting: false, visible, message: null, facts,
             query: visible ? e.query?.text ?? null : null,
             results: {
                 team: mems.filter((m) => m.scope.startsWith('team:')).length, personal: mems.filter((m) => m.scope.startsWith('personal:')).length,
-                items: e.person === opts.viewer ? shown : shown.filter((m) => m.scope === 'team'),
+                items: opts.seeAll || e.person === opts.viewer ? shown : shown.filter((m) => m.scope === 'team'),
             },
         };
     });
@@ -78,7 +80,7 @@ export function interactions(all: MemoryEvent[], world: World, opts: Interaction
     const recalls = rows.filter((r) => r.kind === 'recall');
     const added = rows.flatMap((r) => r.facts.filter((f) => f.kind !== 'duplicate'));
     return {
-        viewer: { id: opts.viewer, name: nameOf(opts.viewer) }, days, person: opts.person ?? null, kind: opts.kind ?? null,
+        viewer: { id: opts.viewer, name: nameOf(opts.viewer) }, days, person: opts.person ?? null, kind: opts.kind ?? null, seeAll: !!opts.seeAll,
         summary: {
             saves: saves.length, recalls: recalls.length, errors: rows.filter((r) => r.status === 'error').length,
             skipped: saves.filter((r) => r.skipped).length, toTeam: saves.filter((r) => r.filedTo === 'team').length, toPersonal: saves.filter((r) => r.filedTo === 'personal').length,

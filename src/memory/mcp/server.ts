@@ -277,6 +277,9 @@ async function main() {
             })),
         });
     });
+    // MEMORY_ADMIN_SEE_ALL=true: admins see everyone's interactions and memory, personal included (testing with a
+    // small team that knows about it). Off by default.
+    const seeAll = process.env.MEMORY_ADMIN_SEE_ALL === 'true';
     // Every interaction, for the whole team or one person (insights.ts decides what text the admin may see).
     app.get('/admin/interactions', (req, res) => {
         if (!adminCaller(req, res)) return;
@@ -287,6 +290,7 @@ async function main() {
             person: str(req.query.person) && req.query.person !== 'all' ? String(req.query.person) : null,
             kind,
             limit: Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000),
+            seeAll,
         }));
     });
 
@@ -296,9 +300,9 @@ async function main() {
         try {
             const caller = access.personFor(bearer(req))!;
             const version = FEATURED_VERSIONS[0];
-            const graph = await service.graph(version, caller, undefined, null, req.query.history === '1');
-            const waiting = await service.workingMemory(version, caller, undefined);
-            res.json({ version: urlName(version), viewer: service.world().people.find((p) => p.id === caller)?.name ?? caller, ...(graph ?? { nodes: [], edges: [] }), waiting: waiting ?? [] });
+            const graph = await service.graph(version, caller, undefined, null, req.query.history === '1', seeAll);
+            const waiting = await service.workingMemory(version, caller, undefined, seeAll);
+            res.json({ version: urlName(version), viewer: service.world().people.find((p) => p.id === caller)?.name ?? caller, seeAll, ...(graph ?? { nodes: [], edges: [] }), waiting: waiting ?? [] });
         } catch (error: any) {
             res.status(500).json({ error: error?.message ?? String(error) });
         }
