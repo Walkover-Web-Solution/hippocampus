@@ -2,11 +2,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 // The SDK's types are written against "zod/v3"; importing the same path keeps one set of declarations.
 import { z } from 'zod/v3';
 import { formatMemories } from '../core/answer';
+import type { RecalledMemory } from '../core/types';
 import type { MemoryEvent } from './events';
+import { PromptSet, promptSet } from './prompts';
 import { MemoryService } from './service';
 
 // The MCP face of one memory version. Identity (who is speaking, which team they're in) comes from
-// the connection (URL query or stdio flags); every tool can override the team.
+// the connection (URL query or stdio flags); every tool can override the team. All text the agent
+// reads comes from a prompt set (prompts.ts).
 
 export interface Connection {
     version: string;
@@ -15,28 +18,27 @@ export interface Connection {
     source: MemoryEvent['source'];
 }
 
-const INSTRUCTIONS = `Long-term memory shared between the user's apps and their teams.
-- Before answering anything that may depend on what the user or their team said earlier (people, projects, deadlines, owners, decisions, preferences, rules), call \`recall\` with a short question.
-- When the user states a fact, decision, plan, preference, rule or correction worth keeping, call \`remember\` with the user's exact words in \`user_message\`. Don't paraphrase: facts are only kept when the message contains them.
-- Memories marked "superseded" are history, "proposed" are unconfirmed, "disputed" conflict: say so instead of picking one.
-- In a team, what people say about their own work and availability is shared with that team; feelings, preferences and anything marked private stay personal.`;
+export function recallText(memories: RecalledMemory[], prompts: PromptSet): string {
+    if (memories.length === 0) return prompts.noMemories;
+    const text = formatMemories(memories);
+    return prompts.statusLegend && memories.some((m) => m.status !== 'current') ? `${text}\n\n${prompts.statusLegend}` : text;
+}
 
-const teamParam = z.string().optional().describe('Team id or name to act in. Omit for the default team; "none" for personal memory only.');
-
-export function buildMcpServer(service: MemoryService, connection: Connection): McpServer {
-    const server = new McpServer({ name: `memory (${connection.version})`, version: '0.1.0' }, { instructions: INSTRUCTIONS });
+export function buildMcpServer(service: MemoryService, connection: Connection, prompts: PromptSet = promptSet()): McpServer {
+    const server = new McpServer({ name: prompts.serverName(connection.version), version: '0.1.0' }, { instructions: prompts.instructions });
     const client = () => server.server.getClientVersion()?.name ?? null;
     const team = (override?: string) => (override === undefined ? connection.team : override);
+    const teamParam = z.string().optional().describe(prompts.team);
 
     server.registerTool('remember', {
         title: 'Remember',
-        description: 'Store what the user just said so it can be recalled later, in this or other apps. Pass the user\'s exact words. Writes are processed in the background unless wait is true.',
+        description: prompts.remember.description,
         inputSchema: {
-            user_message: z.string().min(1).describe("The user's message, verbatim."),
-            assistant_message: z.string().optional().describe('Your reply, if the user confirmed something in it.'),
-            inferred: z.boolean().optional().describe('True when this is your inference rather than something the user stated; it is stored as unconfirmed.'),
+            user_message: z.string().min(1).describe(prompts.remember.userMessage),
+            assistant_message: z.string().optional().describe(prompts.remember.assistantMessage),
+            inferred: z.boolean().optional().describe(prompts.remember.inferred),
             team: teamParam,
-            wait: z.boolean().optional().describe('Wait for processing (10-30 s) and report what was stored.'),
+            wait: z.boolean().optional().describe(prompts.remember.wait),
         },
     }, async ({ user_message, assistant_message, inferred, team: teamOverride, wait }) => {
         const turns = [{ role: 'user' as const, content: user_message }, ...(assistant_message ? [{ role: 'assistant' as const, content: assistant_message }] : [])];
@@ -44,7 +46,7 @@ export function buildMcpServer(service: MemoryService, connection: Connection): 
             version: connection.version, person: connection.person, team: team(teamOverride), kind: inferred ? 'agent' : 'user',
             agent: client() ?? 'mcp', turns, source: connection.source, client: client(),
         });
-        if (!wait) return { content: [{ type: 'text', text: `Queued for memory (${connection.version}); searchable in about 20 seconds. Event ${event.id}.` }] };
+        if (!wait) return { content: [{ type: 'text', text: prompts.queued(connection.version, event.id) }] };
         const result = await done;
         if (result.status === 'error') return { isError: true, content: [{ type: 'text', text: `Memory write failed: ${result.error}` }] };
         const steps = result.steps?.length ? result.steps.map((s) => `- [${s.kind}] ${s.text}`).join('\n') : '- nothing worth remembering was found';
@@ -53,13 +55,13 @@ export function buildMcpServer(service: MemoryService, connection: Connection): 
 
     server.registerTool('recall', {
         title: 'Recall',
-        description: 'Search memory (the user\'s personal memory plus the active team\'s) for facts relevant to a question.',
+        description: prompts.recall.description,
         inputSchema: {
-            query: z.string().min(1).describe('A short question or topic, e.g. "When does the Phoenix launch?"'),
+            query: z.string().min(1).describe(prompts.recall.query),
             team: teamParam,
-            as_of: z.string().optional().describe('ISO date to ask what was true back then.'),
-            include_unconfirmed: z.boolean().optional().describe('Also return unconfirmed (agent-inferred) memories.'),
-            limit: z.number().int().min(1).max(30).optional().describe('Maximum memories (default 8).'),
+            as_of: z.string().optional().describe(prompts.recall.asOf),
+            include_unconfirmed: z.boolean().optional().describe(prompts.recall.includeUnconfirmed),
+            limit: z.number().int().min(1).max(30).optional().describe(prompts.recall.limit),
         },
         annotations: { readOnlyHint: true },
     }, async ({ query, team: teamOverride, as_of, include_unconfirmed, limit }) => {
@@ -68,22 +70,22 @@ export function buildMcpServer(service: MemoryService, connection: Connection): 
             includeProposed: include_unconfirmed ?? false, topK: limit ?? 8, source: connection.source, client: client(),
         });
         if (result.status === 'error') return { isError: true, content: [{ type: 'text', text: `Recall failed: ${result.error}` }] };
-        return { content: [{ type: 'text', text: formatMemories(result.memories ?? []) }] };
+        return { content: [{ type: 'text', text: recallText(result.memories ?? [], prompts) }] };
     });
 
     server.registerTool('list_memories', {
         title: 'List memories',
-        description: 'List everything currently stored that the user can see (personal plus active team).',
+        description: prompts.list,
         inputSchema: { team: teamParam },
         annotations: { readOnlyHint: true },
     }, async ({ team: teamOverride }) => {
         const memories = await service.list(connection.version, connection.person, team(teamOverride));
-        return { content: [{ type: 'text', text: formatMemories(memories) }] };
+        return { content: [{ type: 'text', text: recallText(memories, prompts) }] };
     });
 
     server.registerTool('whoami', {
         title: 'Who am I',
-        description: 'Show which person, team and memory version this connection uses, and the teams available.',
+        description: prompts.whoami,
         inputSchema: {},
         annotations: { readOnlyHint: true },
     }, async () => {
