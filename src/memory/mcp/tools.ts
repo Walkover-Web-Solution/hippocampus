@@ -96,9 +96,9 @@ export function buildMcpServer(service: MemoryService, connection: Connection, p
     }, async () => {
         const { person, teamId } = service.identity(connection.person, connection.team);
         const world = service.world();
-        const teams = world.memberships.filter((m) => m.personId === person.id)
-            .map((m) => `${m.teamId} (${world.teams.find((t) => t.id === m.teamId)?.name ?? '?'}, ${m.role})`);
-        return { content: [{ type: 'text', text: `You are ${person.name} (${person.id}). Active team: ${teamId ?? 'none'}. Memory version: ${connection.version}. Your teams: ${teams.join(', ') || 'none'}.` }] };
+        const teamName = (id: string) => world.teams.find((t) => t.id === id)?.name ?? id;
+        const teams = world.memberships.filter((m) => m.personId === person.id).map((m) => `${teamName(m.teamId)} (${m.teamId}, ${m.role})`);
+        return { content: [{ type: 'text', text: `You are ${person.name} (${person.id}). Active team: ${teamId ? `${teamName(teamId)} (${teamId})` : 'none'}. Your teams: ${teams.join(', ') || 'none'}.` }] };
     });
 
     return server;
