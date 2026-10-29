@@ -10,6 +10,8 @@
 //                                      is speaking, so nobody can read someone else's personal memory
 //   MEMORY_MCP_UI=false                no Lab UI or /api (they show everyone's memories, unauthenticated)
 //   MEMORY_MCP_ALIASES=engram:<version>   short names for versions in the URL (/mcp/engram); data stays under the version
+//   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET   OAuth sign-in with Google (oauth.ts), for apps that connect by URL
+//                                      only; the issuer is MEMORY_MCP_PUBLIC_URL
 // Admins (role "admin" in world.json) add teammates and get their token from POST /admin/people.
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=') as [string, string | undefined]).map(([k, v]) => [k, v ?? 'true']));
@@ -99,6 +101,7 @@ async function main() {
     const { MemoryService, FEATURED_VERSIONS: ALL_FEATURED, MCP_DIR } = await import('./service');
     const { buildMcpServer } = await import('./tools');
     const { AccessStore, isAdmin, upsertPerson } = await import('./access');
+    const { TeamOAuth, mountOAuth } = await import('./oauth');
     const { writeFileSync } = await import('fs');
 
     const served = list(process.env.MEMORY_MCP_VERSIONS);
@@ -142,10 +145,19 @@ async function main() {
     const express = (await import('express')).default;
     const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
     const app = express();
+    // Behind nginx on the same machine.
+    app.set('trust proxy', 'loopback');
     app.use(express.json({ limit: '2mb' }));
     const port = Number(args.port ?? process.env.MEMORY_MCP_PORT ?? 7800);
     const host = process.env.MEMORY_MCP_HOST || '127.0.0.1';
     const base = (process.env.MEMORY_MCP_PUBLIC_URL || `http://127.0.0.1:${port}`).replace(/\/+$/, '');
+    const oauth = process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+        ? new TeamOAuth({
+            issuer: base, file: path.join(MCP_DIR, 'oauth.json'), world: () => service.world(),
+            google: { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET },
+        })
+        : null;
+    if (oauth) mountOAuth(app, oauth);
     const knownVersion = (version: string) => APPROACH_NAMES.includes(version);
     const str = (value: unknown) => (typeof value === 'string' ? value : undefined);
     const bearer = (req: { headers: { authorization?: string } }) => /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]?.trim();
@@ -185,6 +197,37 @@ async function main() {
         }
     });
 
+    // ---- Admin: sign a person out everywhere; issue a fixed OAuth client for apps that don't register themselves ----
+    const adminCaller = (req: any, res: any): boolean => {
+        const caller = access.enabled ? access.personFor(bearer(req)) : undefined;
+        if (!caller || !isAdmin(service.world(), caller)) {
+            res.status(caller ? 403 : 401).json({ error: caller ? 'Only admins can do this' : 'Missing or unknown bearer token' });
+            return false;
+        }
+        return true;
+    };
+    app.post('/admin/people/:id/revoke', (req, res) => {
+        if (!adminCaller(req, res)) return;
+        const id = req.params.id;
+        if (!service.world().people.some((p) => p.id === id)) {
+            res.status(404).json({ error: `Unknown person "${id}"` });
+            return;
+        }
+        access.revoke(id);
+        oauth?.revokePerson(id);
+        res.json({ id, revoked: true, note: 'Their token, link and app sign-ins stop working. Add them again to issue a new token.' });
+    });
+    app.post('/admin/oauth-clients', (req, res) => {
+        if (!adminCaller(req, res)) return;
+        const name = str(req.body?.name)?.trim();
+        const redirects = Array.isArray(req.body?.redirect_uris) ? req.body.redirect_uris.filter((u: unknown) => typeof u === 'string' && /^https:\/\//.test(u)) : [];
+        if (!oauth || !name || !redirects.length) {
+            res.status(400).json({ error: oauth ? 'Send {"name": "Gemini Enterprise", "redirect_uris": ["https://..."]}' : 'OAuth is not configured (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)' });
+            return;
+        }
+        res.json({ ...oauth.registerFixedClient(name, redirects), ...oauth.serverMetadata() });
+    });
+
     // ---- MCP (Streamable HTTP, stateless: one server per request) ----
     // Two ways in: /mcp/<version> with the token in the Authorization header, or a private link
     // /u/<token>/mcp/<version> for apps that take only a URL. A link works like a password: anyone who
@@ -204,9 +247,14 @@ async function main() {
                 return;
             }
             person = owner;
-        } else if (access.enabled) {
-            const owner = access.personFor(bearer(req));
+        } else if (access.enabled || oauth) {
+            // A bearer is either a token issued by an admin or an OAuth access token from signing in.
+            const token = bearer(req);
+            const owner = (access.enabled ? access.personFor(token) : undefined)
+                ?? (oauth ? await oauth.personFor(token, `${base}/mcp/${req.params.version}`) : undefined);
             if (!owner) {
+                // The pointer tells apps that sign in (claude.ai, ChatGPT) where to start.
+                if (oauth) res.set('WWW-Authenticate', `Bearer resource_metadata="${oauth.resourceMetadataUrl(`/mcp/${req.params.version}`)}", scope="memory"`);
                 res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Missing or unknown bearer token' }, id: null });
                 return;
             }

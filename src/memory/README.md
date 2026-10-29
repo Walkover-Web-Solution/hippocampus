@@ -55,6 +55,13 @@ An admin (role `admin` in `world.json`) adds a teammate and gets their token wit
 `curl -X POST <public url>/admin/people -H "Authorization: Bearer <admin token>" -H "content-type: application/json" -d '{"name":"Priya Sharma","email":"priya@company.com","aliases":["Priya"]}'`.
 The person joins the default team (or `"team": "<id>"`); the response holds their token and the command they run:
 `claude mcp add --transport http memory "<public url>/mcp/engram" --header "Authorization: Bearer <their token>"`.
+Apps that connect by URL only (claude.ai, ChatGPT; a Team-plan owner adds the server once) sign each person
+in with Google (`mcp/oauth.ts`, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`). The verified email must be
+on the roster; tokens then act as that person. nginx must also send the root discovery paths for the issuer
+(`/.well-known/oauth-authorization-server/memory`, `/.well-known/oauth-protected-resource/memory/...`) here.
+`POST /admin/people/<id>/revoke` signs a person out everywhere; `POST /admin/oauth-clients` issues a fixed
+client for apps that don't register themselves (Gemini Enterprise).
+
 For apps that take only a URL (claude.ai, ChatGPT), the response also has a private `link`
 (`<public url>/u/<token>/mcp/engram`), added there as a connector with no authentication. The link is the
 password: anyone who has it acts as that person. It is a stopgap until OAuth sign-in.

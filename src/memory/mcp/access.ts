@@ -35,6 +35,12 @@ export class AccessStore {
         return this.read().find((t) => t.hash === hash)?.personId;
     }
 
+    // Removes the person's issued token (tokens from the environment can only be changed there).
+    revoke(personId: string) {
+        const tokens = this.read().filter((t) => t.personId !== personId);
+        writeFileSync(this.file, JSON.stringify(tokens, null, 2), { mode: 0o600 });
+    }
+
     // A fresh token for the person; tokens issued to them earlier stop working.
     issue(personId: string): string {
         const token = randomBytes(24).toString('hex');
