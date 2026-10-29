@@ -173,10 +173,12 @@ async function main() {
             const { person, team } = upsertPerson(world, { name, email, aliases: aliasList, team: str(req.body.team) });
             writeFileSync(path.join(MCP_DIR, 'world.json'), JSON.stringify(world, null, 2));
             const token = access.issue(person.id);
-            const url = `${base}/mcp/${urlName(FEATURED_VERSIONS[0])}`;
+            const versionName = urlName(FEATURED_VERSIONS[0]);
             res.json({
                 id: person.id, name: person.name, email: person.email, aliases: person.aliases, team: team.id, token,
-                connect: `claude mcp add --transport http memory "${url}" --header "Authorization: Bearer ${token}"`,
+                // For apps that take only a URL (claude.ai, ChatGPT): add it as a connector with no authentication.
+                link: `${base}/u/${token}/mcp/${versionName}`,
+                connect: `claude mcp add --transport http memory "${base}/mcp/${versionName}" --header "Authorization: Bearer ${token}"`,
             });
         } catch (error: any) {
             res.status(400).json({ error: error?.message ?? String(error) });
@@ -184,14 +186,25 @@ async function main() {
     });
 
     // ---- MCP (Streamable HTTP, stateless: one server per request) ----
-    app.post('/mcp/:version', async (req, res) => {
+    // Two ways in: /mcp/<version> with the token in the Authorization header, or a private link
+    // /u/<token>/mcp/<version> for apps that take only a URL. A link works like a password: anyone who
+    // has it acts as that person, and reissuing the person's token (admin endpoint) revokes it.
+    const handleMcp = async (req: any, res: any, pathToken?: string) => {
         const version = aliases.get(req.params.version) ?? req.params.version;
         if (!knownVersion(version)) {
             res.status(404).json({ error: `Unknown version "${req.params.version}"`, versions: [...aliases.keys(), ...APPROACH_NAMES] });
             return;
         }
         let person = str(req.query.person);
-        if (access.enabled) {
+        if (pathToken !== undefined) {
+            // An unknown link gets 404, not 401: a 401 would send apps looking for an OAuth sign-in that doesn't exist.
+            const owner = access.enabled ? access.personFor(pathToken) : undefined;
+            if (!owner) {
+                res.status(404).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unknown or revoked link' }, id: null });
+                return;
+            }
+            person = owner;
+        } else if (access.enabled) {
             const owner = access.personFor(bearer(req));
             if (!owner) {
                 res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Missing or unknown bearer token' }, id: null });
@@ -211,10 +224,14 @@ async function main() {
         } catch (error: any) {
             if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: error?.message ?? 'Internal error' }, id: null });
         }
-    });
+    };
+    app.post('/mcp/:version', (req, res) => handleMcp(req, res));
+    app.post('/u/:token/mcp/:version', (req, res) => handleMcp(req, res, req.params.token));
     // Stateless: no server-initiated streams or sessions to end.
-    app.get('/mcp/:version', (_req, res) => res.status(405).set('Allow', 'POST').json({ error: 'Method not allowed' }));
-    app.delete('/mcp/:version', (_req, res) => res.status(405).set('Allow', 'POST').json({ error: 'Method not allowed' }));
+    for (const route of ['/mcp/:version', '/u/:token/mcp/:version']) {
+        app.get(route, (_req, res) => res.status(405).set('Allow', 'POST').json({ error: 'Method not allowed' }));
+        app.delete(route, (_req, res) => res.status(405).set('Allow', 'POST').json({ error: 'Method not allowed' }));
+    }
 
     // ---- UI and its API ----
     if (!ui) app.use((req, res, next) => (req.path === '/' || req.path.startsWith('/api/') ? res.status(404).end() : next()));
