@@ -34,6 +34,9 @@ process.env.MEMORY_SCOPE_POLICY ??= 'team-context';
 // a timer (startFilingTimer).
 process.env.MEMORY_WM_CONSOLIDATE_ON_READ ??= 'false';
 process.env.MEMORY_WM_FILE_BY_AGE ??= 'false';
+// Nightly dreaming here: other names for things and a short profile of each (dreaming.ts). Merging and retiring
+// stay off unless MEMORY_DREAM_STEPS adds them; MEMORY_DREAM_AT_UTC=off turns the night run off.
+process.env.MEMORY_DREAM_STEPS ??= 'aliases,profiles';
 process.env.MEMORY_NEO4J_URL = process.env.MEMORY_MCP_NEO4J_URL || 'bolt://127.0.0.1:7694';
 
 import { createConnection } from 'net';
@@ -134,6 +137,10 @@ async function main() {
     if (process.env.MEMORY_WM_CONSOLIDATE_ON_READ === 'false' && process.env.MEMORY_WM_FILE_BY_AGE !== 'false') {
         service.startFilingTimer(APPROACH_NAMES.filter((v) => v.includes('+consolidate')));
     }
+    // 21:30 UTC is 03:00 in India, when the team is asleep.
+    const dreamAt = process.env.MEMORY_DREAM_AT_UTC || '21:30';
+    // Only on a deployment that names its versions (MEMORY_MCP_VERSIONS), so the local Lab never dreams on its own.
+    if (!STDIO && served.length && /^\d{2}:\d{2}$/.test(dreamAt)) service.startDreamTimer(served.filter((v) => v.startsWith('temporal-kg')), dreamAt);
     const shutdown = async () => {
         await service.close();
         process.exit(0);
@@ -299,6 +306,21 @@ async function main() {
         }));
     });
 
+
+    // Runs the nightly dream now, over every memory space of the served versions (MEMORY_DREAM_STEPS).
+    app.post('/admin/dream', async (req, res) => {
+        if (!adminCaller(req, res)) return;
+        try {
+            const runs = [];
+            for (const version of APPROACH_NAMES.filter((v) => v.startsWith('temporal-kg'))) {
+                const { scopes, notes, ms } = await service.dreamAll(version);
+                runs.push({ version: urlName(version), scopes, ms, aliases: notes.filter((n) => n.includes('also called')).length, profiles: notes.filter((n) => n.includes(': profile: ')).length, failures: notes.filter((n) => n.includes('dreaming failed')).length });
+            }
+            res.json({ runs });
+        } catch (error: any) {
+            res.status(500).json({ error: error?.message ?? String(error) });
+        }
+    });
 
     app.get('/admin/graph', async (req, res) => {
         if (!adminCaller(req, res)) return;

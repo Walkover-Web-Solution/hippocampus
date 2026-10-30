@@ -328,6 +328,51 @@ export class MemoryService {
         this.timer.unref();
     }
 
+    // One dream over every memory space of the version (each person's, each team's), in the write queue.
+    dreamAll(version: string): Promise<{ scopes: number; notes: string[]; ms: number }> {
+        const previous = this.queues.get(version) ?? Promise.resolve();
+        const done = previous.then(async () => {
+            const started = Date.now();
+            const approach = await this.approach(version);
+            if (!approach.dream) return { scopes: 0, notes: [], ms: 0 };
+            const world = this.world();
+            const directory = this.directory(world).directory();
+            const notes: string[] = [];
+            const scopes = this.allScopes(world);
+            for (const scope of scopes) {
+                const out = await approach.dream(this.ns(version, scope), directory, new Date());
+                notes.push(...out.map((n) => `${scope}: ${this.plain(version, n)}`));
+            }
+            return { scopes: scopes.length, notes, ms: Date.now() - started };
+        });
+        this.queues.set(version, done.catch(() => undefined));
+        return done;
+    }
+
+    private dreamTimer: NodeJS.Timeout | null = null;
+
+    // Dreams once a day at `atUtc` ("HH:MM"), over every memory space of the versions. Checked each minute;
+    // a missed time (server down) is not caught up, the next night runs as usual.
+    startDreamTimer(versions: string[], atUtc: string) {
+        let lastDay = '';
+        this.dreamTimer = setInterval(async () => {
+            const now = new Date();
+            const day = now.toISOString().slice(0, 10);
+            if (now.toISOString().slice(11, 16) !== atUtc || lastDay === day) return;
+            lastDay = day;
+            for (const version of versions) {
+                try {
+                    const { scopes, notes, ms } = await this.dreamAll(version);
+                    console.log(`dreaming: ${version}: ${scopes} memory spaces in ${ms} ms`);
+                    for (const note of notes) console.log(`  ${note}`);
+                } catch (error: any) {
+                    console.error(`dreaming failed for ${version}: ${error?.message ?? error}`);
+                }
+            }
+        }, 60_000);
+        this.dreamTimer.unref();
+    }
+
     private allScopes(world: World): Scope[] {
         return [...world.people.map((p) => `personal:${p.id}` as Scope), ...world.teams.map((t) => `team:${t.id}` as Scope)];
     }
@@ -338,6 +383,7 @@ export class MemoryService {
 
     async close() {
         if (this.timer) clearInterval(this.timer);
+        if (this.dreamTimer) clearInterval(this.dreamTimer);
         await Promise.allSettled([...this.queues.values()]);
         for (const loading of this.approaches.values()) {
             try {

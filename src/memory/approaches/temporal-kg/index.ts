@@ -8,7 +8,8 @@ import { personalizedPageRank, queryWords, reciprocalRankFusion } from '../../co
 import { decideScope } from '../../core/scope';
 import { IngestContext, IngestResult, MemoryApproach, MemoryGraph, PersonRef, RawMessage, RecallInput, RecallResult, RecalledMemory, Scope, renderMessage, renderTurns } from '../../core/types';
 import { EntityNode, FactEdge, Graph, openGraph } from './graph';
-import { ExtractedFact, GraphExtraction, dedupeEntities, expandFacts, extractBatch, extractGraph, resolveFacts } from './llm-steps';
+import { ExtractedFact, GraphExtraction, dedupeEntities, dreamEntity, expandFacts, extractBatch, extractGraph, resolveFacts } from './llm-steps';
+import { DREAMING, acceptAliases } from './dreaming';
 import { vetoInvalidations } from './checker';
 import { KeyedMutex } from './lock';
 
@@ -264,52 +265,98 @@ export class TemporalKgApproach implements MemoryApproach {
             const graph = this.db();
             const at = now.toISOString();
             const notes: string[] = [];
-            const entities = (await graph.entitiesInScope(scope)).filter((e) => e.kind !== 'person');
-            const merged = new Set<string>();
-            for (const e of entities) {
-                if (merged.has(e.uuid)) continue;
-                const others = entities.filter((o) => o.uuid !== e.uuid && !merged.has(o.uuid));
-                const summary = await graph.entitySummary(e.uuid, at, 5);
-                if (!summary) continue;
-                const byName = await findCandidates(e.name, e.kind, others.map((o) => ({ id: o.uuid, name: o.name, kind: o.kind })), 'vector');
-                const described = await this.describedCandidates(scope, e.name, at, byName);
-                const candidates = [...byName, ...described];
-                for (const c of candidates) c.summary ??= await graph.entitySummary(c.id, at);
-                // The messages that mentioned it are the context a person would use ("pausing the WebRTC product
-                // and Ankit needs to move back to UI" ties it to what Ankit was working on).
-                const evidence = [`Known facts about ${e.name}: ${summary}`, ...(await graph.episodesMentioning(e.uuid, 2))].join('\n');
-                let result = await matchEntity(e.name, e.kind, evidence, byName);
-                if (!result.match && described.length) result = await matchDescription(e.name, evidence, described);
-                if (!result.match) continue;
-                // Keep the entity that has more facts (usually the properly named one).
-                const [keep, drop] = (await graph.entitySummary(result.match.id, at, 50)).split('; ').length >= summary.split('; ').length
-                    ? [result.match.id, e.uuid] : [e.uuid, result.match.id];
-                await graph.mergeEntity(drop, keep);
-                merged.add(drop);
-                notes.push(`merged "${entities.find((x) => x.uuid === drop)?.name}" into ${entities.find((x) => x.uuid === keep)?.name} (${result.probability.toFixed(2)})`);
+            if (DREAMING.steps.has('merge') || DREAMING.steps.has('retire')) notes.push(...(await this.mergeAndRetire(scope, at)));
+            if (DREAMING.steps.has('aliases') || DREAMING.steps.has('profiles')) notes.push(...(await this.namesAndProfiles(scope, at)));
+            return notes.length ? notes : ['nothing to merge, retire, name or describe'];
+        });
+    }
+
+    // Dreaming, aliases and profiles: for each entity with facts newer than its last dream, the other names the
+    // messages use for it (checked by acceptAliases) and a short profile from its current facts.
+    private async namesAndProfiles(scope: Scope, at: string): Promise<string[]> {
+        const graph = this.db();
+        const todo = await graph.entitiesToDream(scope);
+        if (!todo.length) return [];
+        const owners = await graph.aliasesInScope(scope);
+        const names = (await graph.entitiesInScope(scope)).map((e) => e.name);
+        const notes: string[] = [];
+        for (const e of todo) {
+            const facts = (await graph.entitySummary(e.uuid, at, 12)).split('; ').filter(Boolean);
+            const messages = await graph.episodesMentioning(e.uuid, 4);
+            let result: { aliases: string[]; profile: string };
+            try {
+                result = await dreamEntity({ name: e.name, kind: e.kind, aliases: e.aliases, facts, messages, otherNames: names.filter((n) => n !== e.name) });
+            } catch (error: any) {
+                notes.push(`${e.name}: dreaming failed (${error?.message ?? error})`);
+                continue;
             }
-            for (const { name, facts } of await graph.factsByEntity(scope, at)) {
-                const items = facts.slice(1).map((f, i) => ({ index: i + 1, fact: f.fact, existing: facts.slice(Math.max(0, i - 7), i + 1).map((x) => ({ uuid: x.uuid, fact: x.fact })) }));
-                if (!items.length) continue;
-                const resolutions = await resolveFacts(items.slice(-8));
-                for (const r of resolutions) {
-                    const newer = facts[r.index];
-                    if (!newer) continue;
-                    for (const uuid of r.contradicts) {
-                        const older = facts.find((f) => f.uuid === uuid);
-                        if (!older || older.created_at > newer.created_at) continue;
-                        await graph.invalidateFact(uuid, newer.valid_at ?? newer.created_at, at);
-                        notes.push(`${name}: "${older.fact}" no longer true (after "${newer.fact}")`);
-                    }
-                    const duplicate = facts.find((f) => f.uuid === r.duplicate_of);
-                    if (duplicate && duplicate.created_at < newer.created_at) {
-                        await graph.invalidateFact(newer.uuid, newer.valid_at ?? newer.created_at, at);
-                        notes.push(`${name}: "${newer.fact}" repeats "${duplicate.fact}"`);
-                    }
+            if (DREAMING.steps.has('aliases')) {
+                const taken = new Set(owners.filter((o) => o.uuid !== e.uuid).flatMap((o) => o.aliases));
+                const added = acceptAliases(result.aliases, { existing: [e.name, e.key, ...e.aliases], messages, taken });
+                for (const alias of added) await graph.addAlias(e.uuid, alias);
+                owners.find((o) => o.uuid === e.uuid)?.aliases.push(...added);
+                if (added.length) notes.push(`${e.name}: also called ${added.map((a) => `"${a}"`).join(', ')}`);
+            }
+            const profile = result.profile.trim();
+            if (DREAMING.steps.has('profiles') && profile && facts.length) {
+                await graph.setProfile(e.uuid, profile, await this.embedOne(profile), at);
+                notes.push(`${e.name}: profile: ${profile}`);
+            } else {
+                await graph.markDreamed(e.uuid, at);
+            }
+        }
+        return notes;
+    }
+
+    // Dreaming, merge and retire: entities that are one thing under two names, and facts newer ones made untrue.
+    private async mergeAndRetire(scope: Scope, at: string): Promise<string[]> {
+        const graph = this.db();
+        const notes: string[] = [];
+        const entities = (await graph.entitiesInScope(scope)).filter((e) => e.kind !== 'person');
+        const merged = new Set<string>();
+        for (const e of DREAMING.steps.has('merge') ? entities : []) {
+            if (merged.has(e.uuid)) continue;
+            const others = entities.filter((o) => o.uuid !== e.uuid && !merged.has(o.uuid));
+            const summary = await graph.entitySummary(e.uuid, at, 5);
+            if (!summary) continue;
+            const byName = await findCandidates(e.name, e.kind, others.map((o) => ({ id: o.uuid, name: o.name, kind: o.kind })), 'vector');
+            const described = await this.describedCandidates(scope, e.name, at, byName);
+            const candidates = [...byName, ...described];
+            for (const c of candidates) c.summary ??= await graph.entitySummary(c.id, at);
+            // The messages that mentioned it are the context a person would use ("pausing the WebRTC product
+            // and Ankit needs to move back to UI" ties it to what Ankit was working on).
+            const evidence = [`Known facts about ${e.name}: ${summary}`, ...(await graph.episodesMentioning(e.uuid, 2))].join('\n');
+            let result = await matchEntity(e.name, e.kind, evidence, byName);
+            if (!result.match && described.length) result = await matchDescription(e.name, evidence, described);
+            if (!result.match) continue;
+            // Keep the entity that has more facts (usually the properly named one).
+            const [keep, drop] = (await graph.entitySummary(result.match.id, at, 50)).split('; ').length >= summary.split('; ').length
+                ? [result.match.id, e.uuid] : [e.uuid, result.match.id];
+            await graph.mergeEntity(drop, keep);
+            merged.add(drop);
+            notes.push(`merged "${entities.find((x) => x.uuid === drop)?.name}" into ${entities.find((x) => x.uuid === keep)?.name} (${result.probability.toFixed(2)})`);
+        }
+        for (const { name, facts } of DREAMING.steps.has('retire') ? await graph.factsByEntity(scope, at) : []) {
+            const items = facts.slice(1).map((f, i) => ({ index: i + 1, fact: f.fact, existing: facts.slice(Math.max(0, i - 7), i + 1).map((x) => ({ uuid: x.uuid, fact: x.fact })) }));
+            if (!items.length) continue;
+            const resolutions = await resolveFacts(items.slice(-8));
+            for (const r of resolutions) {
+                const newer = facts[r.index];
+                if (!newer) continue;
+                for (const uuid of r.contradicts) {
+                    const older = facts.find((f) => f.uuid === uuid);
+                    if (!older || older.created_at > newer.created_at) continue;
+                    await graph.invalidateFact(uuid, newer.valid_at ?? newer.created_at, at);
+                    notes.push(`${name}: "${older.fact}" no longer true (after "${newer.fact}")`);
+                }
+                const duplicate = facts.find((f) => f.uuid === r.duplicate_of);
+                if (duplicate && duplicate.created_at < newer.created_at) {
+                    await graph.invalidateFact(newer.uuid, newer.valid_at ?? newer.created_at, at);
+                    notes.push(`${name}: "${newer.fact}" repeats "${duplicate.fact}"`);
                 }
             }
-            return notes.length ? notes : ['nothing to merge or retire'];
-        });
+        }
+        return notes;
     }
 
     private async acceptAndCommit(msg: RawMessage, ctx: IngestContext, actor: PersonRef, extraction: GraphExtraction, gate: GateDecision | null, notes: string[]) {
@@ -641,6 +688,15 @@ export class TemporalKgApproach implements MemoryApproach {
             const named = mentioned.length ? await graph.nearestFacts(scopes, at, queryVector, q.topK, mentioned) : [];
             const near = await graph.nearestFacts(scopes, at, queryVector, q.topK, null);
             let scored = [...named, ...near];
+            // Profiles (written by dreaming): entities whose profile is close to the question join the one-hop
+            // entities, so a vague question reaches the right entity's facts without outranking what it names.
+            if (DREAMING.profileRecall) {
+                const profiled = (await graph.profileMatches(scopes, queryVector, DREAMING.profileMin, 3)).map((p) => p.uuid).filter((uuid) => !mentioned.includes(uuid));
+                if (profiled.length) {
+                    profiled.forEach((uuid) => linkedIds.add(uuid));
+                    scored = [...scored, ...(await graph.nearestFacts(scopes, at, queryVector, q.topK, profiled))];
+                }
+            }
             if (this.options.crowd) {
                 const linked = linkedFrom(this.options.rank ? sort(scored) : scored);
                 if (linked.length) scored = [...scored, ...(await graph.nearestFacts(scopes, at, queryVector, q.topK, linked))];

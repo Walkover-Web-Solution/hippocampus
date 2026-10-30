@@ -403,6 +403,45 @@ export class Graph {
 
     // ---- dreaming ----
 
+    // Entities in the scope with a fact newer than their last dream (or never dreamed over), with their names.
+    async entitiesToDream(scope: Scope): Promise<{ uuid: string; key: string; name: string; kind: string; aliases: string[] }[]> {
+        return this.run(
+            `MATCH (e:Entity {scope: $scope})-[r:RELATES_TO]-()
+             WITH e, max(r.created_at) AS latest
+             WHERE e.dreamed_at IS NULL OR latest > e.dreamed_at
+             RETURN e.uuid AS uuid, e.key AS key, e.name AS name, e.kind AS kind, coalesce(e.aliases, []) AS aliases`,
+            { scope }
+        );
+    }
+
+    // Every alias in use in the scope, so a new alias never points at two entities.
+    async aliasesInScope(scope: Scope): Promise<{ uuid: string; aliases: string[] }[]> {
+        return this.run('MATCH (e:Entity {scope: $scope}) RETURN e.uuid AS uuid, coalesce(e.aliases, []) AS aliases', { scope });
+    }
+
+    // A short description of the entity's current state, written by dreaming; its embedding lets a vague
+    // question find the entity.
+    async setProfile(uuid: string, profile: string, embedding: number[], at: string): Promise<void> {
+        await this.run(
+            'MATCH (e:Entity {uuid: $uuid}) SET e.profile = $profile, e.profile_embedding = $embedding, e.dreamed_at = $at',
+            { uuid, profile, embedding, at }
+        );
+    }
+
+    async markDreamed(uuid: string, at: string): Promise<void> {
+        await this.run('MATCH (e:Entity {uuid: $uuid}) SET e.dreamed_at = $at', { uuid, at });
+    }
+
+    // Entities whose profile is closest to the question.
+    async profileMatches(scopes: Scope[], embedding: number[], min: number, limit: number): Promise<{ uuid: string; score: number }[]> {
+        return this.run(
+            `MATCH (e:Entity) WHERE e.scope IN $scopes AND e.profile_embedding IS NOT NULL
+             WITH e, vector.similarity.cosine(e.profile_embedding, $embedding) AS score WHERE score >= $min
+             RETURN e.uuid AS uuid, score ORDER BY score DESC LIMIT toInteger($limit)`,
+            { scopes, embedding, min, limit }
+        );
+    }
+
     // The latest messages that mentioned an entity (its episodes), for judging it in context.
     async episodesMentioning(uuid: string, limit: number): Promise<string[]> {
         const rows = await this.run<{ text: string }>(
