@@ -33,6 +33,9 @@ export const RawMessageSchema = z.object({
     // Earlier turns of the same chat session, for resolving references; not new information.
     context: z.array(TurnSchema),
     occurredAt: z.string().datetime(),
+    // The user confirmed the assistant's reply in these turns (asked to save it, or said it's right), so its
+    // details count as the user's own.
+    assistantConfirmed: z.boolean().optional(),
 });
 export type RawMessage = z.infer<typeof RawMessageSchema>;
 

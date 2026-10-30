@@ -45,6 +45,8 @@ export interface RememberRequest {
     agent?: string;
     turns: Turn[];
     context?: Turn[];
+    // The user confirmed the assistant turn (asked to save it): its details count as theirs.
+    assistantConfirmed?: boolean;
     // ISO time the message happened; default now. Same time + different people = a concurrent write.
     occurredAt?: string;
     source: MemoryEvent['source'];
@@ -142,7 +144,10 @@ export class MemoryService {
         const event = this.events.record({
             id, group: req.group ?? id, at: new Date().toISOString(), version: req.version, source: req.source, client: req.client ?? null,
             kind: 'remember', person: person.id, team: teamId, status: 'queued',
-            message: { kind: req.kind ?? 'user', agent: req.agent ?? req.client ?? 'manual', occurredAt, turns: req.turns, context: req.context ?? [] },
+            message: {
+                kind: req.kind ?? 'user', agent: req.agent ?? req.client ?? 'manual', occurredAt, turns: req.turns, context: req.context ?? [],
+                ...(req.assistantConfirmed ? { assistantConfirmed: true } : {}),
+            },
         });
         this.noteWrite(req.version, occurredAt);
 
@@ -166,6 +171,7 @@ export class MemoryService {
                 id: event.id, kind: message.kind, actorPersonId: person.id, actorName: person.name, actorAgent: message.agent,
                 activeTeamId: teamId, activeTeamName: teamId ? dir.team(teamId).name : null, sessionId: null,
                 turns: message.turns, context: message.context, occurredAt: message.occurredAt,
+                ...(message.assistantConfirmed ? { assistantConfirmed: true } : {}),
             };
             const result = await approach.ingest(msg, {
                 writableScopes: writableScopes(dir, person.id, teamId, at).map((s) => this.ns(version, s)),
@@ -302,6 +308,20 @@ export class MemoryService {
             if (!approach.consolidateOverdue) return { notes: 0, ms: 0 };
             const notes = await approach.consolidateOverdue(new Date(), this.directory(this.world()).directory(), `~${version}`);
             return { notes: notes.length, ms: Date.now() - started };
+        });
+        this.queues.set(version, done.catch(() => undefined));
+        return done;
+    }
+
+    // Files one buffer now (e.g. "personal:p-ankit"), whatever its size, in the version's write queue.
+    fileScope(version: string, scope: Scope): Promise<{ notes: string[]; ms: number }> {
+        const previous = this.queues.get(version) ?? Promise.resolve();
+        const done = previous.then(async () => {
+            const started = Date.now();
+            const approach = await this.approach(version);
+            if (!approach.consolidate) throw new Error(`${version} has no working memory`);
+            const notes = await approach.consolidate(this.ns(version, scope), this.directory(this.world()).directory());
+            return { notes: notes.map((n) => this.plain(version, n)), ms: Date.now() - started };
         });
         this.queues.set(version, done.catch(() => undefined));
         return done;

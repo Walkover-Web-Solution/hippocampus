@@ -48,6 +48,8 @@ export function buildMcpServer(service: MemoryService, connection: Connection, p
         const { event, done } = service.remember({
             version: connection.version, person: connection.person, team: team(teamOverride), kind: inferred ? 'agent' : 'user',
             agent: client() ?? 'mcp', turns, source: connection.source, client: client(),
+            // An agent passes its reply only when the user confirmed something in it (see assistant_message).
+            assistantConfirmed: !!assistant_message,
             // The agent's note on who or what the message refers to: earlier conversation, used only to resolve references.
             context: context ? [{ role: 'assistant' as const, content: `In this conversation: ${context}` }] : undefined,
         });

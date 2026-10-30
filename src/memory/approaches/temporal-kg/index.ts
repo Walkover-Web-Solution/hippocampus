@@ -163,6 +163,8 @@ export class TemporalKgApproach implements MemoryApproach {
         const now = ctx.now.toISOString();
         const notes: string[] = [];
         const gate = this.options.gate || this.options.consolidate ? await gateOrOpen(msg) : null;
+        // The user confirmed the assistant's reply, so what it says is theirs, however much of it the assistant wrote.
+        if (gate && msg.assistantConfirmed) gate.proposed = false;
         if (gate) {
             notes.push(describeGate(gate));
             // Working memory keeps short-lived things the gate finds "not worth remembering" long-term ("out
@@ -197,8 +199,12 @@ export class TemporalKgApproach implements MemoryApproach {
         const personal = ctx.writableScopes.find((s) => s.startsWith('personal:'))!;
         const scope = team && !gate.forcePersonal ? team : personal;
         // What reads show while it waits: only what the person said (an assistant's guess in the same exchange
-        // isn't theirs), and an agent's notes as unconfirmed. Consolidation still gets the whole exchange.
-        const said = msg.turns.filter((t) => t.role !== 'assistant').map((t) => t.content).join('\n');
+        // isn't theirs), and an agent's notes as unconfirmed. An assistant reply the person confirmed counts as
+        // theirs, so it is shown too. Consolidation still gets the whole exchange.
+        const said = msg.turns
+            .filter((t) => t.role !== 'assistant' || msg.assistantConfirmed)
+            .map((t) => (t.role === 'assistant' ? `(confirmed from the assistant's reply) ${t.content}` : t.content))
+            .join('\n');
         const text = msg.kind === 'agent' ? `(inferred by an agent, unconfirmed) ${said}` : said;
         await graph.addBuffered({
             id: `${msg.id}@${scope}`, scope, at: msg.occurredAt, actor: actor.name, text,

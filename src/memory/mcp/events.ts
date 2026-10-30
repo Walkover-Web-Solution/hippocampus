@@ -30,7 +30,7 @@ export interface MemoryEvent {
     team: string | null;
     status: EventStatus;
     // remember: the message as the approach received it; recall/list: the query.
-    message?: { kind: 'user' | 'agent'; agent: string; occurredAt: string; turns: Turn[]; context: Turn[] };
+    message?: { kind: 'user' | 'agent'; agent: string; occurredAt: string; turns: Turn[]; context: Turn[]; assistantConfirmed?: boolean };
     query?: { text: string; asOf: string | null; includeProposed: boolean; topK: number; now: string };
     steps?: Step[];
     memories?: RecalledMemory[];

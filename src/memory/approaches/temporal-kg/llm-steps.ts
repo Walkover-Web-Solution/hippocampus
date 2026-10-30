@@ -34,7 +34,7 @@ Extract the entities (people, teams, projects, clients, services, deliverables, 
 
 Rules:
 1. Extract only from the NEW turns. Earlier turns are context for resolving references.
-2. A fact counts when the user states or confirms it. If only the assistant asserts or guesses something and the user doesn't confirm it, use certainty "inferred". Hypotheticals, brainstorming, questions and undecided options get certainty "hypothetical". Chit-chat and generic how-to help are not facts.
+2. A fact counts when the user states or confirms it. When the user asks to save, remember or update details the assistant wrote, or says they're right, those details count as stated by the user. If only the assistant asserts or guesses something and the user doesn't confirm it, use certainty "inferred". Hypotheticals, brainstorming, questions and undecided options get certainty "hypothetical". Chit-chat and generic how-to help are not facts.
 3. If the user corrects a value within the new turns, output only the final value. If something ends or is cancelled, state that as a fact ("X was cancelled"). Short status updates are facts too, including ones that end an earlier temporary state ("I'm back", "done for the day", "leave cancelled").
 4. People: use full names from the people list; "I", "me", "my" mean the user. Reuse known entity names exactly when they refer to a known entity. For counts, the source names what is counted (e.g. "Phoenix beta testers").
 5. fact: a self-contained sentence naming the source and the value. Write dates as "Month D, YYYY (YYYY-MM-DD)", resolving relative dates against the message time; money as written ("$240,000").
@@ -60,6 +60,7 @@ export async function extractGraph(input: ExtractInput): Promise<GraphExtraction
     const user = [
         `Message time: ${msg.occurredAt}`,
         `App: ${msg.actorAgent}${msg.kind === 'agent' ? " (these are notes an agent inferred, not the user's own words)" : ''}`,
+        ...(msg.assistantConfirmed ? ["The user confirmed the assistant's reply in the new turns (asked to save it): its details count as stated by the user."] : []),
         `User: ${input.actor.name}`,
         `Active team: ${teamLabel(msg)}`,
         '',
@@ -108,7 +109,7 @@ export async function extractBatch(input: { messages: BatchMessage[]; directory:
         '',
         'Messages:',
         ...input.messages.map(({ msg, actor }, i) => [
-            `#${i} — time ${msg.occurredAt}; speaker ${actor.name}; active team ${teamLabel(msg)}; app ${msg.actorAgent}${msg.kind === 'agent' ? " (notes an agent inferred, not the speaker's own words)" : ''}`,
+            `#${i} — time ${msg.occurredAt}; speaker ${actor.name}; active team ${teamLabel(msg)}; app ${msg.actorAgent}${msg.kind === 'agent' ? " (notes an agent inferred, not the speaker's own words)" : ''}${msg.assistantConfirmed ? "; the speaker confirmed the assistant's reply (asked to save it), so its details count as stated by the speaker" : ''}`,
             // Earlier turns only resolve references ("he", "the migration"); facts come from the message itself.
             ...(msg.context.length ? [`(context only, don't extract from it:)\n${renderTurns(msg.context)}`] : []),
             renderTurns(msg.turns),

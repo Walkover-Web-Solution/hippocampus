@@ -307,6 +307,28 @@ async function main() {
     });
 
 
+    // Files one memory space's waiting messages now instead of when its buffer is full: {"scope": "personal:p-ankit"}.
+    app.post('/admin/file', async (req, res) => {
+        if (!adminCaller(req, res)) return;
+        const scope = str(req.body?.scope) ?? '';
+        const world = service.world();
+        const known = scope.startsWith('personal:') ? world.people.some((p) => `personal:${p.id}` === scope) : world.teams.some((t) => `team:${t.id}` === scope);
+        if (!known) {
+            res.status(400).json({ error: 'Send {"scope": "personal:<person id>"} or {"scope": "team:<team id>"}' });
+            return;
+        }
+        try {
+            const runs = [];
+            for (const version of APPROACH_NAMES.filter((v) => v.includes('+consolidate'))) {
+                const { notes, ms } = await service.fileScope(version, scope as any);
+                runs.push({ version: urlName(version), ms, facts: notes.filter((n) => / (new|proposed) fact/.test(n)).length, unconfirmed: notes.filter((n) => / proposed fact/.test(n)).length, notes: notes.length });
+            }
+            res.json({ scope, runs });
+        } catch (error: any) {
+            res.status(500).json({ error: error?.message ?? String(error) });
+        }
+    });
+
     // Runs the nightly dream now, over every memory space of the served versions (MEMORY_DREAM_STEPS).
     app.post('/admin/dream', async (req, res) => {
         if (!adminCaller(req, res)) return;
