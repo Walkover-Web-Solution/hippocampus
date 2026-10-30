@@ -121,30 +121,37 @@ export async function extractBatch(input: { messages: BatchMessage[]; directory:
     return result as { entities: GraphExtraction['entities']; facts: (ExtractedFact & { message: number })[] };
 }
 
-// Dreaming: from an entity's current facts and the messages that mention it, the other names people use for
-// it (so lookups match casual wording) and a short profile (so vague questions find it).
-const DreamSchema = z.object({ aliases: z.array(z.string()), profile: z.string() });
+// Dreaming: for a batch of entities of one memory space, from their current facts and the messages that
+// mention them, the other names people use for each (so lookups match casual wording) and a short profile (so
+// vague questions find it). Seeing related entities together helps tell whose nickname is whose.
+const DreamBatchSchema = z.object({ entities: z.array(z.object({ index: z.number().int(), aliases: z.array(z.string()), profile: z.string() })) });
 
-export async function dreamEntity(input: { name: string; kind: string; aliases: string[]; facts: string[]; messages: string[]; otherNames: string[] }) {
+export interface DreamInput { name: string; kind: string; aliases: string[]; facts: string[]; messages: string[] }
+
+export async function dreamEntities(input: { entities: DreamInput[]; allNames: string[]; model?: string }) {
     const user = [
-        `Entity: ${input.name} (${input.kind})`,
-        `Names already known: ${input.aliases.join(', ') || '(none)'}`,
-        `Other things in this memory (never their names): ${input.otherNames.slice(0, 60).join(', ') || '(none)'}`,
+        `Everything in this memory space: ${input.allNames.slice(0, 120).join(', ') || '(none)'}`,
         '',
-        'Current facts:',
-        input.facts.map((f) => `- ${f}`).join('\n') || '(none)',
-        '',
-        'Messages that mention it:',
-        input.messages.map((m, i) => `#${i + 1}\n${m}`).join('\n\n') || '(none)',
+        ...input.entities.map((e, i) => [
+            `## #${i} ${e.name} (${e.kind})`,
+            `Names already known: ${e.aliases.join(', ') || '(none)'}`,
+            'Current facts:',
+            e.facts.map((f) => `- ${f}`).join('\n') || '(none)',
+            'Messages that mention it:',
+            e.messages.map((m) => `> ${m.replace(/\n/g, '\n> ')}`).join('\n') || '(none)',
+            '',
+        ].join('\n')),
     ].join('\n');
-    return structured({
-        name: 'entity_dream',
-        schema: DreamSchema,
-        system: `You maintain a team's shared memory. For one entity:
-1. aliases: other names the messages actually use for this same entity, copied as written (a short name, nickname, abbreviation, or a phrase like "the billing thing" when it clearly means this entity). Only names that appear in the messages. Never pronouns, never generic words on their own ("the project", "the team", "it"), never names of the other things listed, never names already known. Return [] when there are none.
-2. profile: 1 to 3 short sentences saying what the entity is and its current state, using only the current facts given (owners, dates, status, decisions). No guesses, no advice, nothing from the messages that isn't in the facts.`,
+    const result = await structured({
+        name: 'entity_dream_batch',
+        schema: DreamBatchSchema,
+        model: input.model,
+        system: `You maintain a team's shared memory. For each numbered entity, return its index and:
+1. aliases: other names the messages actually use for this same entity, copied as written (a short name, nickname, abbreviation, or a phrase like "the billing thing" when it clearly means this entity). Only names that appear in its messages. Never pronouns, never generic words on their own ("the project", "the team", "it"), never a name that belongs to another thing in this memory space, never names already known. Return [] when there are none.
+2. profile: 1 to 3 short sentences saying what the entity is and its current state, using only its current facts (owners, dates, status, decisions). No guesses, no advice, nothing from the messages that isn't in the facts.`,
         user,
     });
+    return result.entities;
 }
 
 const DedupeSchema = z.object({

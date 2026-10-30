@@ -51,11 +51,13 @@ interface StructuredRequest<T extends z.ZodTypeAny> {
     schema: T;
     system: string;
     user: string;
+    // Another model of the same provider for this call (e.g. dreaming); the configured one otherwise.
+    model?: string;
 }
 
 export async function structured<T extends z.ZodTypeAny>(req: StructuredRequest<T>): Promise<z.infer<T>> {
     const completion = await openaiClient().beta.chat.completions.parse({
-        model: llmConfig.model,
+        model: req.model || llmConfig.model,
         ...samplingParams(),
         messages: [
             { role: 'system', content: req.system },

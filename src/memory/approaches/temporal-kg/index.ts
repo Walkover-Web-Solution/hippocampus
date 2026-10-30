@@ -8,7 +8,7 @@ import { personalizedPageRank, queryWords, reciprocalRankFusion } from '../../co
 import { decideScope } from '../../core/scope';
 import { IngestContext, IngestResult, MemoryApproach, MemoryGraph, PersonRef, RawMessage, RecallInput, RecallResult, RecalledMemory, Scope, renderMessage, renderTurns } from '../../core/types';
 import { EntityNode, FactEdge, Graph, openGraph } from './graph';
-import { ExtractedFact, GraphExtraction, dedupeEntities, dreamEntity, expandFacts, extractBatch, extractGraph, resolveFacts } from './llm-steps';
+import { ExtractedFact, GraphExtraction, dedupeEntities, dreamEntities, expandFacts, extractBatch, extractGraph, resolveFacts } from './llm-steps';
 import { DREAMING, acceptAliases } from './dreaming';
 import { vetoInvalidations } from './checker';
 import { KeyedMutex } from './lock';
@@ -146,7 +146,7 @@ export class TemporalKgApproach implements MemoryApproach {
         return this.graph;
     }
 
-    // Similarity cut-offs on the embedding model's own scale: related facts score 0.63–0.89 with
+    // Similarity cut-offs on the embedding model's own scale: related facts score 0.63â€“0.89 with
     // EmbeddingGemma (unrelated ~0.2), lower than with the API model.
     private similarity() {
         return this.options.gemma ? { relatedFact: 0.45, history: 0.35 } : { relatedFact: 0.6, history: 0.5 };
@@ -278,31 +278,37 @@ export class TemporalKgApproach implements MemoryApproach {
         const todo = await graph.entitiesToDream(scope);
         if (!todo.length) return [];
         const owners = await graph.aliasesInScope(scope);
-        const names = (await graph.entitiesInScope(scope)).map((e) => e.name);
+        const allNames = (await graph.entitiesInScope(scope)).map((e) => e.name);
         const notes: string[] = [];
-        for (const e of todo) {
-            const facts = (await graph.entitySummary(e.uuid, at, 12)).split('; ').filter(Boolean);
-            const messages = await graph.episodesMentioning(e.uuid, 4);
-            let result: { aliases: string[]; profile: string };
+        for (let start = 0; start < todo.length; start += DREAMING.batchSize) {
+            const batch = await Promise.all(todo.slice(start, start + DREAMING.batchSize).map(async (e) => ({
+                ...e,
+                facts: (await graph.entitySummary(e.uuid, at, 10)).split('; ').filter(Boolean),
+                messages: await graph.episodesMentioning(e.uuid, 3),
+            })));
+            let results: { index: number; aliases: string[]; profile: string }[];
             try {
-                result = await dreamEntity({ name: e.name, kind: e.kind, aliases: e.aliases, facts, messages, otherNames: names.filter((n) => n !== e.name) });
+                results = await dreamEntities({ entities: batch, allNames, model: DREAMING.model });
             } catch (error: any) {
-                notes.push(`${e.name}: dreaming failed (${error?.message ?? error})`);
+                notes.push(`${batch.map((e) => e.name).join(', ')}: dreaming failed (${error?.message ?? error})`);
                 continue;
             }
-            if (DREAMING.steps.has('aliases')) {
-                const taken = new Set(owners.filter((o) => o.uuid !== e.uuid).flatMap((o) => o.aliases));
-                const added = acceptAliases(result.aliases, { existing: [e.name, e.key, ...e.aliases], messages, taken });
-                for (const alias of added) await graph.addAlias(e.uuid, alias);
-                owners.find((o) => o.uuid === e.uuid)?.aliases.push(...added);
-                if (added.length) notes.push(`${e.name}: also called ${added.map((a) => `"${a}"`).join(', ')}`);
-            }
-            const profile = result.profile.trim();
-            if (DREAMING.steps.has('profiles') && profile && facts.length) {
-                await graph.setProfile(e.uuid, profile, await this.embedOne(profile), at);
-                notes.push(`${e.name}: profile: ${profile}`);
-            } else {
-                await graph.markDreamed(e.uuid, at);
+            for (const [index, e] of batch.entries()) {
+                const result = results.find((r) => r.index === index) ?? { aliases: [], profile: '' };
+                if (DREAMING.steps.has('aliases')) {
+                    const taken = new Set(owners.filter((o) => o.uuid !== e.uuid).flatMap((o) => o.aliases));
+                    const added = acceptAliases(result.aliases, { existing: [e.name, e.key, ...e.aliases], messages: e.messages, taken });
+                    for (const alias of added) await graph.addAlias(e.uuid, alias);
+                    owners.find((o) => o.uuid === e.uuid)?.aliases.push(...added);
+                    if (added.length) notes.push(`${e.name}: also called ${added.map((a) => `"${a}"`).join(', ')}`);
+                }
+                const profile = result.profile.trim();
+                if (DREAMING.steps.has('profiles') && profile && e.facts.length) {
+                    await graph.setProfile(e.uuid, profile, await this.embedOne(profile), at);
+                    notes.push(`${e.name}: profile: ${profile}`);
+                } else {
+                    await graph.markDreamed(e.uuid, at);
+                }
             }
         }
         return notes;
@@ -476,7 +482,7 @@ export class TemporalKgApproach implements MemoryApproach {
                 })
                 : [];
             // valid_at is when the fact became true. The extractor sometimes gives the date the fact is about
-            // ("launch is November 5" → November 5), which inverts this fact's window and the one it replaces;
+            // ("launch is November 5" â†’ November 5), which inverts this fact's window and the one it replaces;
             // a statement is true from when it is made at the latest.
             const stated = item.fact.valid_at;
             const validAt = stated && Date.parse(stated) <= Date.parse(msg.occurredAt) ? stated : msg.occurredAt;
@@ -583,7 +589,7 @@ export class TemporalKgApproach implements MemoryApproach {
                 if (node) {
                     await graph.addAlias(node.uuid, key);
                     resolved.set(mapKey, node);
-                    notes.push(`match${how}: "${display}" → ${node.name} (${result.probability.toFixed(2)})`);
+                    notes.push(`match${how}: "${display}" â†’ ${node.name} (${result.probability.toFixed(2)})`);
                     continue;
                 }
             }

@@ -8,6 +8,10 @@ export const DREAMING = {
     // Lookups also reach entities whose profile is this close to the question (cosine).
     profileMin: Number(process.env.MEMORY_PROFILE_MIN) || 0.55,
     profileRecall: process.env.MEMORY_PROFILE_RECALL !== 'false',
+    // Its own model (it runs offline, so a stronger one costs little); the extraction model otherwise.
+    model: process.env.MEMORY_DREAM_MODEL || undefined,
+    // Entities per LLM call.
+    batchSize: Number(process.env.MEMORY_DREAM_BATCH) || 12,
 };
 
 // Words that never become an alias on their own.
