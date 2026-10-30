@@ -61,6 +61,8 @@ export const WORKING_MEMORY = {
     // Whether a buffer is also filed once its oldest message has waited maxAgeMinutes. Off: only a full buffer
     // is filed, so every filing sees a whole batch of context; waiting messages are still found by reads.
     fileByAge: process.env.MEMORY_WM_FILE_BY_AGE !== 'false',
+    // How many times a filing asks again when the batch extraction returns no facts at all.
+    emptyRetries: Number(process.env.MEMORY_WM_EMPTY_RETRIES ?? 2),
 };
 
 // link: descriptive names whose last word is one of these ("the WebRTC product") may refer to an entity
@@ -243,11 +245,20 @@ export class TemporalKgApproach implements MemoryApproach {
                 return { id: p.id, msg, gate, ctx: { ...ctx, now: new Date(ctx.now), directory }, actor: actorOf(msg.actorPersonId, msg.actorName, directory) };
             });
             const writable = [...new Set(items.flatMap((i) => i.ctx.writableScopes))];
-            const batch = await extractBatch({
+            const input = {
                 messages: items.map(({ msg, actor }) => ({ msg, actor })), directory,
                 knownEntities: await graph.entityNames(writable), searchTerms: this.options.lexical && this.options.fuse,
-            });
+            };
+            // Every buffered message passed the gate, yet the model sometimes answers a whole batch with no facts
+            // (seen live with Gemini, while the same batch asked again gave dozens). Ask again before giving up.
+            let batch = await extractBatch(input);
+            let retries = 0;
+            while (batch.facts.length === 0 && retries < WORKING_MEMORY.emptyRetries) {
+                retries++;
+                batch = await extractBatch(input);
+            }
             const notes = [`consolidated ${items.length} message(s) from ${scope}`];
+            if (retries) notes.push(`extraction came back empty; asked again ${retries} time(s)${batch.facts.length ? '' : ', still empty'}`);
             for (const [i, item] of items.entries()) {
                 const extraction = { entities: batch.entities, facts: batch.facts.filter((f) => f.message === i) };
                 const mine: string[] = [];
