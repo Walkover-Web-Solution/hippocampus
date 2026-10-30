@@ -295,7 +295,7 @@ async function main() {
     // Every interaction, for the whole team or one person (insights.ts decides what text the admin may see).
     app.get('/admin/interactions', (req, res) => {
         if (!adminCaller(req, res)) return;
-        const kind = req.query.kind === 'remember' || req.query.kind === 'recall' ? req.query.kind : null;
+        const kind = ['remember', 'recall', 'file', 'dream'].includes(String(req.query.kind)) ? req.query.kind as 'remember' | 'recall' | 'file' | 'dream' : null;
         res.json(interactions(service.events.list(100_000), service.world(), {
             viewer: access.personFor(bearer(req))!,
             days: Math.min(Math.max(Number(req.query.days) || 14, 1), 90),

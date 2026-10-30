@@ -10,7 +10,7 @@ const DUP = /^(?:#\d+ ([^:]+): )?((?:personal|team):\S+) duplicate of existing: 
 const WAIT = /^working memory \(((?:personal|team):[^)]+)\)/;
 
 // seeAll: show everything to the admin, personal memory included (testing with a small team; MEMORY_ADMIN_SEE_ALL).
-export interface InteractionOptions { viewer: string; days: number; person?: string | null; kind?: 'remember' | 'recall' | null; limit?: number; now?: number; seeAll?: boolean }
+export interface InteractionOptions { viewer: string; days: number; person?: string | null; kind?: 'remember' | 'recall' | 'file' | 'dream' | null; limit?: number; now?: number; seeAll?: boolean }
 
 export function interactions(all: MemoryEvent[], world: World, opts: InteractionOptions) {
     const now = opts.now ?? Date.now();
@@ -21,7 +21,13 @@ export function interactions(all: MemoryEvent[], world: World, opts: Interaction
     const side = (scope: string) => (scope.startsWith('team:') ? 'team' as const : 'personal' as const);
     const nameOf = (id: string) => names.get(id) ?? id;
 
-    const events = all.filter((e) => e.source === 'mcp' && e.at >= since && (e.kind === 'remember' || e.kind === 'recall') && (!opts.person || e.person === opts.person));
+    // Filing and dreaming (source "system") belong to a person when they ran on their own memory space or filed
+    // one of their messages ("#2 Priya Sharma: ...").
+    const personName = opts.person ? nameOf(opts.person) : null;
+    const involves = (e: MemoryEvent) => !opts.person || e.person === opts.person
+        || (e.source === 'system' && (e.steps ?? []).some((s) => s.text.startsWith(`#`) && s.text.includes(` ${personName}: `)));
+    const events = all.filter((e) => e.at >= since && involves(e) && (
+        (e.source === 'mcp' && (e.kind === 'remember' || e.kind === 'recall')) || (e.source === 'system' && (e.kind === 'consolidate' || e.kind === 'dream'))));
     const rows = events.map((e) => {
         const steps = e.steps ?? [];
         const facts = steps.flatMap((s) => {
@@ -35,14 +41,30 @@ export function interactions(all: MemoryEvent[], world: World, opts: Interaction
         const gate = steps.find((s) => s.kind === 'gate')?.text ?? null;
         const skipped = gate?.startsWith('gate: skip') ? /skip \(([^;)]+)/.exec(gate)?.[1] ?? 'not kept' : null;
         const base = {
-            id: e.id, at: e.at, person: { id: e.person, name: nameOf(e.person) }, kind: e.kind as 'remember' | 'recall',
+            id: e.id, at: e.at, person: { id: e.person, name: e.person === 'system' ? 'Memory' : nameOf(e.person) },
+            kind: (e.kind === 'consolidate' ? 'file' : e.kind) as 'remember' | 'recall' | 'file' | 'dream',
             app: e.client ?? 'unknown', status: e.status, ms: e.ms ?? null, error: e.status === 'error' ? e.error ?? 'error' : null,
         };
+        if (e.source === 'system') {
+            const space = e.person !== 'system' ? `personal:${e.person}` : `team:${e.team}`;
+            const filed = Number(/^consolidated (\d+) message/.exec(steps[0]?.text ?? '')?.[1] ?? 0);
+            const added = facts.filter((f) => f.kind !== 'duplicate').length;
+            const dreamt = (e.kind === 'dream' ? steps : []).filter((s) => /: (also called|profile:) /.test(s.text));
+            return {
+                ...base, filedTo: side(space), skipped: null, waiting: false, visible: readable.has(space), message: null, query: null, facts, results: null,
+                filed: e.kind === 'consolidate' ? { messages: filed, empty: filed > 0 && added === 0 } : null,
+                dreamt: e.kind === 'dream' ? {
+                    profiles: dreamt.filter((s) => s.text.includes(': profile: ')).length,
+                    aliases: dreamt.filter((s) => s.text.includes(': also called ')).length,
+                    items: readable.has(space) ? dreamt.map((s) => s.text) : [],
+                } : null,
+            };
+        }
         if (e.kind === 'remember') {
             const filedTo = waitingIn ? side(waitingIn) : facts[0]?.scope ?? null;
             const visible = !!opts.seeAll || e.person === opts.viewer || (waitingIn ? readable.has(waitingIn) : filedTo === 'team' && facts.every((f) => f.scope === 'team' && f.text !== null));
             const said = (e.message?.turns ?? []).filter((t) => t.role === 'user').map((t) => t.content).join('\n');
-            return { ...base, filedTo, skipped, waiting: !!waitingIn && !skipped, visible, message: visible ? said : null, query: null, facts, results: null };
+            return { ...base, filedTo, skipped, waiting: !!waitingIn && !skipped, visible, message: visible ? said : null, query: null, facts, results: null, filed: null, dreamt: null };
         }
         const mems = e.memories ?? [];
         const shown = mems.filter((m) => readable.has(m.scope)).map((m) => ({ text: m.text, status: m.status, scope: side(m.scope), author: m.author ?? null }));
@@ -55,6 +77,7 @@ export function interactions(all: MemoryEvent[], world: World, opts: Interaction
                 team: mems.filter((m) => m.scope.startsWith('team:')).length, personal: mems.filter((m) => m.scope.startsWith('personal:')).length,
                 items: opts.seeAll || e.person === opts.viewer ? shown : shown.filter((m) => m.scope === 'team'),
             },
+            filed: null, dreamt: null,
         };
     });
 
@@ -66,7 +89,9 @@ export function interactions(all: MemoryEvent[], world: World, opts: Interaction
     }
     const hoursUtc = Array.from({ length: 24 }, () => 0);
     const apps: Record<string, number> = {};
+    // Activity counts what people did; the server's own filing and dreaming are counted on their own.
     for (const r of rows) {
+        if (r.kind === 'file' || r.kind === 'dream') continue;
         const bucket = daily.get(r.at.slice(0, 10));
         if (bucket) {
             if (r.kind === 'remember') bucket.saves++;
@@ -75,6 +100,7 @@ export function interactions(all: MemoryEvent[], world: World, opts: Interaction
         hoursUtc[new Date(r.at).getUTCHours()]++;
         apps[r.app] = (apps[r.app] ?? 0) + 1;
     }
+    const filings = rows.filter((r) => r.kind === 'file');
     const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
     const saves = rows.filter((r) => r.kind === 'remember');
     const recalls = rows.filter((r) => r.kind === 'recall');
@@ -88,6 +114,7 @@ export function interactions(all: MemoryEvent[], world: World, opts: Interaction
             recallsAnswered: recalls.filter((r) => r.results!.team + r.results!.personal > 0).length,
             avgSaveMs: avg(saves.map((r) => r.ms ?? 0).filter(Boolean)), avgRecallMs: avg(recalls.map((r) => r.ms ?? 0).filter(Boolean)),
             apps, daily: [...daily.values()], hoursUtc,
+            filings: filings.length, emptyFilings: filings.filter((r) => r.filed?.empty).length, dreams: rows.filter((r) => r.kind === 'dream').length,
         },
         events: (opts.kind ? rows.filter((r) => r.kind === opts.kind) : rows).slice(0, opts.limit ?? 200),
     };

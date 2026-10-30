@@ -23,7 +23,8 @@ export interface MemoryEvent {
     group: string;
     at: string;
     version: string;
-    source: 'mcp' | 'ui' | 'stdio';
+    // system: work the server does on its own (filing working memory, dreaming), recorded so it can be followed.
+    source: 'mcp' | 'ui' | 'stdio' | 'system';
     client: string | null;
     kind: EventKind;
     person: string;

@@ -298,16 +298,37 @@ export class MemoryService {
         }
     }
 
+    // Records work the server did on its own (filing working memory, dreaming) as an event of one memory space,
+    // so the admin view can follow it like a save.
+    private recordSystem(version: string, kind: 'consolidate' | 'dream', scope: string, client: string, notes: string[], ms: number | undefined, error?: string) {
+        const id = randomUUID();
+        const person = scope.startsWith('personal:') ? scope.slice('personal:'.length) : null;
+        const event = this.events.record({
+            id, group: id, at: new Date().toISOString(), version, source: 'system', client, kind,
+            person: person ?? 'system', team: person ? null : scope.replace(/^team:/, ''), status: error ? 'error' : 'done',
+        });
+        this.events.update(event, { steps: notes.map((n) => classifyNote(n)), ...(ms !== undefined ? { ms } : {}), ...(error ? { error } : {}) });
+    }
+
     // Files every buffer of the version that has waited past its maximum age. It runs in the version's write
-    // queue, after any saves already waiting, so it never races them. Returns how many notes it produced.
+    // queue, after any saves already waiting, so it never races them. Records one event per memory space filed.
     fileOverdue(version: string): Promise<{ notes: number; ms: number }> {
         const previous = this.queues.get(version) ?? Promise.resolve();
         const done = previous.then(async () => {
             const started = Date.now();
             const approach = await this.approach(version);
             if (!approach.consolidateOverdue) return { notes: 0, ms: 0 };
-            const notes = await approach.consolidateOverdue(new Date(), this.directory(this.world()).directory(), `~${version}`);
-            return { notes: notes.length, ms: Date.now() - started };
+            const notes = (await approach.consolidateOverdue(new Date(), this.directory(this.world()).directory(), `~${version}`)).map((n) => this.plain(version, n));
+            const ms = Date.now() - started;
+            // Each filing's notes start with "consolidated N message(s) from <scope>".
+            const filings: { scope: string; notes: string[] }[] = [];
+            for (const note of notes) {
+                const start = /^consolidated \d+ message\(s\) from (\S+)/.exec(note);
+                if (start) filings.push({ scope: start[1], notes: [note] });
+                else filings[filings.length - 1]?.notes.push(note);
+            }
+            for (const f of filings) this.recordSystem(version, 'consolidate', f.scope, 'timer', f.notes, filings.length === 1 ? ms : undefined);
+            return { notes: notes.length, ms };
         });
         this.queues.set(version, done.catch(() => undefined));
         return done;
@@ -320,8 +341,10 @@ export class MemoryService {
             const started = Date.now();
             const approach = await this.approach(version);
             if (!approach.consolidate) throw new Error(`${version} has no working memory`);
-            const notes = await approach.consolidate(this.ns(version, scope), this.directory(this.world()).directory());
-            return { notes: notes.map((n) => this.plain(version, n)), ms: Date.now() - started };
+            const notes = (await approach.consolidate(this.ns(version, scope), this.directory(this.world()).directory())).map((n) => this.plain(version, n));
+            const ms = Date.now() - started;
+            if (notes.length) this.recordSystem(version, 'consolidate', scope, 'admin', notes, ms);
+            return { notes, ms };
         });
         this.queues.set(version, done.catch(() => undefined));
         return done;
@@ -351,7 +374,7 @@ export class MemoryService {
     }
 
     // One dream over every memory space of the version (each person's, each team's), in the write queue.
-    dreamAll(version: string): Promise<{ scopes: number; notes: string[]; ms: number }> {
+    dreamAll(version: string, client: 'timer' | 'admin' = 'admin'): Promise<{ scopes: number; notes: string[]; ms: number }> {
         const previous = this.queues.get(version) ?? Promise.resolve();
         const done = previous.then(async () => {
             const started = Date.now();
@@ -362,8 +385,11 @@ export class MemoryService {
             const notes: string[] = [];
             const scopes = this.allScopes(world);
             for (const scope of scopes) {
-                const out = await approach.dream(this.ns(version, scope), directory, new Date());
-                notes.push(...out.map((n) => `${scope}: ${this.plain(version, n)}`));
+                const began = Date.now();
+                const out = (await approach.dream(this.ns(version, scope), directory, new Date())).map((n) => this.plain(version, n));
+                notes.push(...out.map((n) => `${scope}: ${n}`));
+                // Only spaces where dreaming did something get an event.
+                if (out.some((n) => !n.startsWith('nothing to '))) this.recordSystem(version, 'dream', scope, client, out, Date.now() - began);
             }
             return { scopes: scopes.length, notes, ms: Date.now() - started };
         });
@@ -384,7 +410,7 @@ export class MemoryService {
             lastDay = day;
             for (const version of versions) {
                 try {
-                    const { scopes, notes, ms } = await this.dreamAll(version);
+                    const { scopes, notes, ms } = await this.dreamAll(version, 'timer');
                     console.log(`dreaming: ${version}: ${scopes} memory spaces in ${ms} ms`);
                     for (const note of notes) console.log(`  ${note}`);
                 } catch (error: any) {
