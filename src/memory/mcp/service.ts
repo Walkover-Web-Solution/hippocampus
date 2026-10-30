@@ -243,7 +243,9 @@ export class MemoryService {
         for (const n of g.nodes) {
             const id = viewId(n.id);
             const seen = nodes.get(id);
-            nodes.set(id, seen ? { ...seen, aliases: [...new Set([...seen.aliases, ...n.aliases])] } : { ...n, id, name: plain(n.name) });
+            nodes.set(id, seen
+                ? { ...seen, aliases: [...new Set([...seen.aliases, ...n.aliases])], profile: seen.profile ?? (n.profile ? plain(n.profile) : null) }
+                : { ...n, id, name: plain(n.name), profile: n.profile ? plain(n.profile) : null });
         }
         return {
             nodes: [...nodes.values()],

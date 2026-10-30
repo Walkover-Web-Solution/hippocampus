@@ -127,6 +127,8 @@ export interface GraphNode {
     name: string;
     kind: string;
     aliases: string[];
+    // A short description of its current state, written by dreaming (null until then).
+    profile?: string | null;
 }
 
 // A fact between two entities; source === target for a fact about one entity ("launches November 30").

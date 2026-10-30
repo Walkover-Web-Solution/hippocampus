@@ -335,8 +335,8 @@ export class Graph {
     // The whole believed graph at `at` in these scopes, for inspection; with history, also facts that were
     // invalidated by then (status "superseded").
     async subgraph(scopes: Scope[], at: string, history: boolean) {
-        const nodes = await this.run<{ id: string; name: string; kind: string; aliases: string[] }>(
-            'MATCH (e:Entity) WHERE e.scope IN $scopes RETURN e.uuid AS id, e.name AS name, e.kind AS kind, coalesce(e.aliases, []) AS aliases',
+        const nodes = await this.run<{ id: string; name: string; kind: string; aliases: string[]; profile: string | null }>(
+            'MATCH (e:Entity) WHERE e.scope IN $scopes RETURN e.uuid AS id, e.name AS name, e.kind AS kind, coalesce(e.aliases, []) AS aliases, e.profile AS profile',
             { scopes }
         );
         const edges = await this.run<{ id: string; source: string; target: string; relation: string; text: string; status: string; believed: boolean;
