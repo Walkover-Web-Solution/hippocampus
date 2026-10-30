@@ -8,6 +8,7 @@ import { personalizedPageRank, queryWords, reciprocalRankFusion } from '../../co
 import { decideScope } from '../../core/scope';
 import { IngestContext, IngestResult, MemoryApproach, MemoryGraph, PersonRef, RawMessage, RecallInput, RecallResult, RecalledMemory, Scope, renderMessage, renderTurns } from '../../core/types';
 import { EntityNode, FactEdge, Graph, openGraph } from './graph';
+import type { CompletionInfo } from '../../core/llm';
 import { ExtractedFact, GraphExtraction, dedupeEntities, dreamEntities, expandFacts, extractBatch, extractGraph, resolveFacts } from './llm-steps';
 import { DREAMING, acceptAliases } from './dreaming';
 import { vetoInvalidations } from './checker';
@@ -245,20 +246,29 @@ export class TemporalKgApproach implements MemoryApproach {
                 return { id: p.id, msg, gate, ctx: { ...ctx, now: new Date(ctx.now), directory }, actor: actorOf(msg.actorPersonId, msg.actorName, directory) };
             });
             const writable = [...new Set(items.flatMap((i) => i.ctx.writableScopes))];
+            let call: CompletionInfo | null = null;
             const input = {
                 messages: items.map(({ msg, actor }) => ({ msg, actor })), directory,
                 knownEntities: await graph.entityNames(writable), searchTerms: this.options.lexical && this.options.fuse,
+                report: (info: CompletionInfo) => { call = info; },
             };
             // Every buffered message passed the gate, yet the model sometimes answers a whole batch with no facts
-            // (seen live with Gemini, while the same batch asked again gave dozens). Ask again before giving up.
+            // (seen live with Gemini, while the same batch asked again gave dozens). Ask again before giving up,
+            // and say how each empty answer ended, to find out why.
+            const empties: string[] = [];
             let batch = await extractBatch(input);
-            let retries = 0;
-            while (batch.facts.length === 0 && retries < WORKING_MEMORY.emptyRetries) {
-                retries++;
+            while (batch.facts.length === 0) {
+                const c = call as CompletionInfo | null;
+                const how = c
+                    ? `${c.model}, finish ${c.finishReason ?? 'unknown'}, ${c.promptTokens} prompt / ${c.outputTokens} output / ${c.thinkingTokens} thinking tokens, ${batch.entities.length} entities, ${(c.ms / 1000).toFixed(1)}s`
+                    : `${batch.entities.length} entities`;
+                empties.push(`empty extraction ${empties.length + 1} (${how})`);
+                console.warn(`working memory: empty extraction for ${scope}, ${items.length} message(s): ${how}`);
+                if (empties.length > WORKING_MEMORY.emptyRetries) break;
                 batch = await extractBatch(input);
             }
-            const notes = [`consolidated ${items.length} message(s) from ${scope}`];
-            if (retries) notes.push(`extraction came back empty; asked again ${retries} time(s)${batch.facts.length ? '' : ', still empty'}`);
+            const notes = [`consolidated ${items.length} message(s) from ${scope}`, ...empties];
+            if (empties.length) notes.push(`extraction came back empty; asked again ${empties.length - (batch.facts.length ? 0 : 1)} time(s)${batch.facts.length ? '' : ', still empty'}`);
             for (const [i, item] of items.entries()) {
                 const extraction = { entities: batch.entities, facts: batch.facts.filter((f) => f.message === i) };
                 const mine: string[] = [];

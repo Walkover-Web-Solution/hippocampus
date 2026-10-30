@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { structured } from '../../core/llm';
+import { structured, type CompletionInfo } from '../../core/llm';
 import { selfFactsRule } from '../../core/scope-policy';
 import { PersonRef, RawMessage, renderTurns, teamLabel } from '../../core/types';
 
@@ -99,7 +99,7 @@ export interface BatchMessage {
     actor: PersonRef;
 }
 
-export async function extractBatch(input: { messages: BatchMessage[]; directory: PersonRef[]; knownEntities: { name: string; kind: string }[]; searchTerms?: boolean }) {
+export async function extractBatch(input: { messages: BatchMessage[]; directory: PersonRef[]; knownEntities: { name: string; kind: string }[]; searchTerms?: boolean; report?: (info: CompletionInfo) => void }) {
     const user = [
         'People:',
         input.directory.map((p) => `- ${p.name}${p.aliases.length ? ` (also: ${p.aliases.join(', ')})` : ''}`).join('\n'),
@@ -117,8 +117,8 @@ export async function extractBatch(input: { messages: BatchMessage[]; directory:
     ].join('\n');
     const system = extractSystem() + (input.searchTerms ? SEARCH_TERMS_RULE : '') + BATCH_RULES;
     const result = input.searchTerms
-        ? await structured({ name: 'graph_batch_extraction', schema: FusedBatchSchema, system, user })
-        : await structured({ name: 'graph_batch_extraction', schema: BatchSchema, system, user });
+        ? await structured({ name: 'graph_batch_extraction', schema: FusedBatchSchema, system, user, report: input.report })
+        : await structured({ name: 'graph_batch_extraction', schema: BatchSchema, system, user, report: input.report });
     return result as { entities: GraphExtraction['entities']; facts: (ExtractedFact & { message: number })[] };
 }
 

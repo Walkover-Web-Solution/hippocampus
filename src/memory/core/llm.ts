@@ -53,9 +53,22 @@ interface StructuredRequest<T extends z.ZodTypeAny> {
     user: string;
     // Another model of the same provider for this call (e.g. dreaming); the configured one otherwise.
     model?: string;
+    // Told how the call went, so a caller can explain an answer that looks wrong (e.g. an empty extraction).
+    report?: (info: CompletionInfo) => void;
+}
+
+export interface CompletionInfo {
+    model: string;
+    finishReason: string | null;
+    promptTokens: number;
+    outputTokens: number;
+    // Gemini's thinking, billed as output but left out of completion_tokens (see billedOutputTokens).
+    thinkingTokens: number;
+    ms: number;
 }
 
 export async function structured<T extends z.ZodTypeAny>(req: StructuredRequest<T>): Promise<z.infer<T>> {
+    const started = Date.now();
     const completion = await openaiClient().beta.chat.completions.parse({
         model: req.model || llmConfig.model,
         ...samplingParams(),
@@ -66,6 +79,11 @@ export async function structured<T extends z.ZodTypeAny>(req: StructuredRequest<
         response_format: zodResponseFormat(req.schema, req.name),
     });
     recordLlm(completion.usage?.prompt_tokens, billedOutputTokens(completion.usage));
+    req.report?.({
+        model: completion.model, finishReason: completion.choices[0].finish_reason ?? null,
+        promptTokens: completion.usage?.prompt_tokens ?? 0, outputTokens: completion.usage?.completion_tokens ?? 0,
+        thinkingTokens: billedOutputTokens(completion.usage) - (completion.usage?.completion_tokens ?? 0), ms: Date.now() - started,
+    });
     const message = completion.choices[0].message;
     if (message.refusal) throw new Error(`LLM refused ${req.name}: ${message.refusal}`);
     if (!message.parsed) throw new Error(`LLM returned no parsed output for ${req.name}`);
